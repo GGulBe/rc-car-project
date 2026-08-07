@@ -36,6 +36,11 @@ I2cDevice::~I2cDevice() {
     if (fd_ >= 0) ::close(fd_);
 }
 
+void I2cDevice::writeRegister8(std::uint8_t reg, std::uint8_t value) const {
+    const std::uint8_t data[2] = {reg, value};
+    if (::write(fd_, data, sizeof(data)) != static_cast<ssize_t>(sizeof(data))) throw systemError("I2C register write failed");
+}
+
 std::uint8_t I2cDevice::readRegister8(std::uint8_t reg) const {
     std::uint8_t value = 0;
     readRegisters(reg, &value, 1);

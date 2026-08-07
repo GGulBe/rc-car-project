@@ -43,8 +43,6 @@ int main() {
         Bno055 imu(bno055I2c);
         imu.initialize();
 
-        auto previousTime = std::chrono::steady_clock::now();
-
         servos.setCalibration(0, { P0_MIN, P0_MAX});
         servos.setCalibration(1, { P1_MIN, P1_MAX });
         servos.setCalibration(2, { P2_MIN, P2_MAX});
@@ -58,7 +56,7 @@ int main() {
         constexpr int height = 480;
         constexpr int targetFps = 30;
 
-        cv::VideoCapture camera(makePipeline(width, height, targetFps), cv::CAP_GSTREAMER);
+        cv::VideoCapture camera(makePipeline(width, height, targetFps));
         if (!camera.isOpened()) {
             std::cerr << "GStreamer camera open failed. Trying V4L2 index 0.\n";
             camera.open(0, cv::CAP_V4L2);

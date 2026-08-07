@@ -26,6 +26,7 @@ private:
 
     I2cDevice& i2c_;
     
+    static constexpr std::uint8_t REG_EUL_ROLL_LSB = 0x1C;
     static constexpr std::uint8_t REG_CHIP_ID = 0x00;       // 칩 레지스터 주소
     static constexpr std::uint8_t REG_PAGE_ID = 0x07;       // 레지스터 페이지 전환 주소
     static constexpr std::uint8_t REG_GYR_DATA_X = 0x14;    // 자이로 X축 데이터 시작 주소

@@ -18,7 +18,6 @@
 #include "I2CDevice.h"
 #include "util.h"
 #include "Bno055.h"
-#include "SpeedEstimator.h"
 
 
 constexpr double P0_CENTER = -80.0;

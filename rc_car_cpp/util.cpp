@@ -1,4 +1,5 @@
 #include "util.h"
+#include "Bno055.h"
 
 #include <cerrno>
 #include <chrono>
@@ -31,7 +32,7 @@ std::string makePhotoFilename() {
     return name.str();
 }
 
-void drawStatus(cv::Mat& frame, double speedSetting, double driveCommand, double steeringAngle, double cameraPan, double cameraTilt, double fps,double speed) {
+void drawStatus(cv::Mat& frame, double speedSetting, double driveCommand, double steeringAngle, double cameraPan, double cameraTilt, double fps,Tilt tilt) {
     std::ostringstream line1;
     line1 << std::fixed << std::setprecision(1) << "FPS " << fps << "  Speed " << speedSetting << "%  Drive " << driveCommand << "%";
     std::ostringstream line2;
@@ -41,8 +42,7 @@ void drawStatus(cv::Mat& frame, double speedSetting, double driveCommand, double
     cv::putText(frame, line2.str(), cv::Point(15, 60), cv::FONT_HERSHEY_SIMPLEX, 0.60, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
     cv::putText(frame, "W/S drive  A/D steer  Space stop  I/J/K/L camera", cv::Point(15, frame.rows - 45), cv::FONT_HERSHEY_SIMPLEX, 0.50, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
     cv::putText(frame, "+/- speed  X steer center  C camera center  P photo  Q quit", cv::Point(15, frame.rows - 20), cv::FONT_HERSHEY_SIMPLEX, 0.50, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
-    const std::string speedText = cv::format("Speed: %.2f mm/s", speed);
-    cv::putText(frame, speedText, cv::Point(15, 90), cv::FONT_HERSHEY_SIMPLEX, 0.50, cv::Scalar(0, 0,255), 1, cv::LINE_AA);
-
+    cv::putText(frame, "ROLL : " + tilt.rollDeg.str(), cv::Point(15, 90), cv::FONT_HERSHEY_SIMPLEX, 0.50, cv::Scalar(0, 0,255), 1, cv::LINE_AA);
+    cv::putText(frame, "PITCH : " + tilt.pitchDeg.str(), cv::Point(15, 90), cv::FONT_HERSHEY_SIMPLEX, 0.55, cv::Scalar(0, 0,255), 1, cv::LINE_AA);
     
 }

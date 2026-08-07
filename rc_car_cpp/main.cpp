@@ -41,7 +41,7 @@ int main() {
         ServoController servos(pwm);
         MotorController motors(pwm);
         
-        Bno055 imu(bno055I2c, Bno055::Axis::Y, 1.0, Bno055::Axis::Z, 1.0);
+        Bno055 imu(bno055I2c);
         imu.initialize();
 
         std::cout << "Keep the robot stationary.\n";
@@ -88,21 +88,8 @@ int main() {
         while (true) {
             if (!camera.read(frame) || frame.empty()) throw std::runtime_error("Failed to read camera frame");
             
-            const Bno055::Motion motion = imu.readMotion();
-const double motorPwmPercent = motors.commandPercent();
+            const Bno055::Tilt tilt = imu.readMotion();
 
-const auto currentTime = std::chrono::steady_clock::now();
-const double deltaTimeSeconds = std::chrono::duration<double>(currentTime - previousTime).count();
-previousTime = currentTime;
-
-speedEstimator.update(
-    motion.forwardAccelerationMps2,
-    motion.yawRateDps,
-    motorPwmPercent,
-    deltaTimeSeconds
-);
-
-            const double signedSpeedMmps = speedEstimator.speedMmps();
             const auto now = std::chrono::steady_clock::now();
             const double elapsed = std::chrono::duration<double>(now - fpsStart).count();
             if (elapsed >= 1.0) {

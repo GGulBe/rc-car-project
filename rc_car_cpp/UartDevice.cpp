@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <termios.h>
 #include <unistd.h>
+#include <cstddef>
 
 UartDevice::UartDevice(const std::string& devicePath = "/dev/serial0")
 {

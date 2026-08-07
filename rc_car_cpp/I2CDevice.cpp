@@ -11,7 +11,7 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-I2cDevice::I2cDevice(std::uint8_t address_, const std::string& devicePath) : address_(address) {
+I2cDevice::I2cDevice(std::uint8_t address, const std::string& devicePath) : address_(address_) {
     fd_ = ::open(devicePath.c_str(), O_RDWR | O_CLOEXEC);
     if (fd_ < 0) throw systemError("Failed to open " + devicePath);
 

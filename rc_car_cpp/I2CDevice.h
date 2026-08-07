@@ -6,7 +6,7 @@
 
 class I2cDevice {
 public:
-    explicit I2cDevice(std::uint8_t address_, const std::string& devicePath = "/dev/i2c-1");
+    explicit I2cDevice(std::uint8_t address, const std::string& devicePath = "/dev/i2c-1");
     ~I2cDevice();
 
     I2cDevice(const I2cDevice&) = delete;

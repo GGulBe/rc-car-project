@@ -15,4 +15,4 @@ private:
     int fd_ = -1;
     void configure();
 
-}
+};

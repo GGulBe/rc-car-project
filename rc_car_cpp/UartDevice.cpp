@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <cstddef>
 #include <cstdint>
-UartDevice::UartDevice(const std::string& devicePath = "/dev/serial0")
+UartDevice::UartDevice(const std::string& devicePath)
 {
     fd_ = ::open(devicePath.c_str(), O_RDWR | O_CLOEXEC | O_NOCTTY);
 

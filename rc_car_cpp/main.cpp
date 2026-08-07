@@ -43,10 +43,6 @@ int main() {
         Bno055 imu(bno055I2c);
         imu.initialize();
 
-        std::cout << "Keep the robot stationary.\n";
-        const double accelerationBias = calibrateForwardAcceleration(imu);
-        SpeedEstimator speedEstimator(accelerationBias, 5.0);
-
         auto previousTime = std::chrono::steady_clock::now();
 
         servos.setCalibration(0, { P0_MIN, P0_MAX});
@@ -67,7 +63,7 @@ int main() {
             std::cerr << "GStreamer camera open failed. Trying V4L2 index 0.\n";
             camera.open(0, cv::CAP_V4L2);
         }
-        if (!camera.isOpened()) throw std::runtime_error("Failed to open Raspberry Pi camera");
+        if (!camera.isOpened()) throw systemError("Failed to open Raspberry Pi camera");
 
         double speedSetting = 30.0;
         double driveCommand = 0.0;
@@ -85,7 +81,7 @@ int main() {
         std::cout << "Keyboard input is read from this terminal. Press W/A/S/D without Enter.\n";
 
         while (true) {
-            if (!camera.read(frame) || frame.empty()) throw std::runtime_error("Failed to read camera frame");
+            if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
             
             const Bno055::Tilt tilt = imu.readMotion();
 

@@ -91,7 +91,7 @@ int main() {
             }
             
             cv::Mat display = frame.clone();
-            drawStatus(display, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps,tilt);
+            drawStatus(display, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps);
             cv::imshow("Robot Camera Control", display);
 
             const int windowKey = cv::waitKey(1);

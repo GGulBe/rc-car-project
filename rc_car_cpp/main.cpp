@@ -18,8 +18,6 @@
 #include "I2CDevice.h"
 #include "util.h"
 #include "Bno055.h"
-#include "SpeedEstimator.h"
-
 
 constexpr double P0_CENTER = -80.0;
 constexpr double P1_CENTER = 0.0;
@@ -40,15 +38,9 @@ int main() {
         PwmController pwm(i2c);
         ServoController servos(pwm);
         MotorController motors(pwm);
-        
-        Bno055 imu(bno055I2c, Bno055::Axis::Y, 1.0, Bno055::Axis::Z, 1.0);
+
+        Bno055 imu(bno055I2c);
         imu.initialize();
-
-        std::cout << "Keep the robot stationary.\n";
-        const double accelerationBias = calibrateForwardAcceleration(imu);
-        SpeedEstimator speedEstimator(accelerationBias, 5.0);
-
-        auto previousTime = std::chrono::steady_clock::now();
 
         servos.setCalibration(0, { P0_MIN, P0_MAX});
         servos.setCalibration(1, { P1_MIN, P1_MAX });
@@ -63,12 +55,12 @@ int main() {
         constexpr int height = 480;
         constexpr int targetFps = 30;
 
-        cv::VideoCapture camera(makePipeline(width, height, targetFps), cv::CAP_GSTREAMER);
+        cv::VideoCapture camera(makePipeline(width, height, targetFps));
         if (!camera.isOpened()) {
             std::cerr << "GStreamer camera open failed. Trying V4L2 index 0.\n";
             camera.open(0, cv::CAP_V4L2);
         }
-        if (!camera.isOpened()) throw std::runtime_error("Failed to open Raspberry Pi camera");
+        if (!camera.isOpened()) throw systemError("Failed to open Raspberry Pi camera");
 
         double speedSetting = 30.0;
         double driveCommand = 0.0;
@@ -86,23 +78,10 @@ int main() {
         std::cout << "Keyboard input is read from this terminal. Press W/A/S/D without Enter.\n";
 
         while (true) {
-            if (!camera.read(frame) || frame.empty()) throw std::runtime_error("Failed to read camera frame");
+            if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
             
-            const Bno055::Motion motion = imu.readMotion();
-const double motorPwmPercent = motors.commandPercent();
-
-const auto currentTime = std::chrono::steady_clock::now();
-const double deltaTimeSeconds = std::chrono::duration<double>(currentTime - previousTime).count();
-previousTime = currentTime;
-
-speedEstimator.update(
-    motion.forwardAccelerationMps2,
-    motion.yawRateDps,
-    motorPwmPercent,
-    deltaTimeSeconds
-);
-
-            const double signedSpeedMmps = speedEstimator.speedMmps();
+            const Bno055::Tilt tilt = imu.readMotion();
+            std::cout <<"heading : "<<tilt.headingDeg <<" roll : "<< tilt.rollDeg <<" pitch : "<< tilt.pitchDeg << std::endl; 
             const auto now = std::chrono::steady_clock::now();
             const double elapsed = std::chrono::duration<double>(now - fpsStart).count();
             if (elapsed >= 1.0) {
@@ -112,7 +91,7 @@ speedEstimator.update(
             }
             
             cv::Mat display = frame.clone();
-            drawStatus(display, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps,std::abs(signedSpeedMmps));
+            drawStatus(display, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps);
             cv::imshow("Robot Camera Control", display);
 
             const int windowKey = cv::waitKey(1);

@@ -10,7 +10,7 @@ class Bno055 {
 public:
     struct Tilt
     {
-        double headingDeg // 회전
+        double headingDeg; // 회전
         double rollDeg;   // 좌우 기울기
         double pitchDeg;  // 앞뒤 기울기
     };
@@ -31,6 +31,7 @@ private:
     static constexpr std::uint8_t REG_UNIT_SEL = 0x3B;      // 데이터 출력 형식 지정 주소
     static constexpr std::uint8_t REG_OPR_MODE = 0x3D;      // 동작 모드 설정 주소
     static constexpr std::uint8_t REG_PWR_MODE = 0x3E;      // 전력 모드 설정 주소
+    static constexpr std::uint8_t REG_PAGE_ID = 0x07;
 
     static constexpr std::uint8_t CHIP_ID_VALUE = 0xA0;     // 우리가 쓰는 BNO055 칩 고유 id 값
     static constexpr std::uint8_t MODE_CONFIG = 0x00;       // 설정 변경 되는 config 값

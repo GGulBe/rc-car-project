@@ -9,7 +9,6 @@ public:
     ~UartDevice();
 
     std::string readLine();
-    void writeData(const std::string& data);
 
 private:
     int fd_ = -1;

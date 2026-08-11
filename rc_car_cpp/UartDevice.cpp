@@ -23,7 +23,7 @@ UartDevice::~UartDevice()
 {
     if (fd_ >= 0) ::close(fd_);
 }
-
+//UART 통신 설정
 void UartDevice::configure()
 {
     termios tty{};
@@ -79,10 +79,3 @@ std::string UartDevice::readLine() {
     return line;
 }
 
-void UartDevice::writeData(const std::string& data) {
-    const ssize_t bytesWritten = ::write(fd_, data.data(), data.size());
-
-    if (bytesWritten < 0) {
-        throw systemError("Failed to write UART");
-    }
-}

@@ -18,7 +18,7 @@
 #include "I2CDevice.h"
 #include "util.h"
 #include "Bno055.h"
-
+#include "UartDevice.h"
 
 constexpr double P0_CENTER = -80.0;
 constexpr double P1_CENTER = 0.0;
@@ -39,7 +39,8 @@ int main() {
         PwmController pwm(i2c);
         ServoController servos(pwm);
         MotorController motors(pwm);
-        
+        UartDevice gps();
+
         Bno055 imu(bno055I2c);
         imu.initialize();
 
@@ -82,7 +83,7 @@ int main() {
             if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
             
             const Bno055::Tilt tilt = imu.readMotion();
-
+            std::cout <<"heading : "<<tilt.headingDeg <<" roll : "<< tilt.rollDeg <<" pitch : "<< tilt.pitchDeg << std::endl; 
             const auto now = std::chrono::steady_clock::now();
             const double elapsed = std::chrono::duration<double>(now - fpsStart).count();
             if (elapsed >= 1.0) {

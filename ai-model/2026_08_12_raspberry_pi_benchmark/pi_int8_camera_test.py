@@ -120,7 +120,9 @@ class Picamera2Source:
         self.last_metadata = {}
         self.camera = Picamera2(camera_num=0)
         configuration = self.camera.create_video_configuration(
-            main={"size": (640, 480), "format": "BGR888"},
+            # Picamera2/libcamera names are counter-intuitive: RGB888 is
+            # captured as BGR byte order, which is the order OpenCV expects.
+            main={"size": (640, 480), "format": "RGB888"},
             controls={"FrameRate": 30.0},
             buffer_count=4,
         )

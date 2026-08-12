@@ -102,6 +102,8 @@ ls -l /dev/video*
 
 기본 카메라 번호는 `0`입니다. OV5647 CSI 카메라는 RAW 장치인 `/dev/video0`을 OpenCV로 직접 열지 않고 Picamera2/libcamera를 사용합니다. `rpicam-hello --list-cameras`의 번호가 다르면 실행 스크립트의 `--camera 0`을 변경합니다.
 
+Picamera2 포맷 이름은 메모리의 채널 순서와 직관적으로 반대로 보일 수 있습니다. OpenCV가 기대하는 BGR 배열을 받기 위해 `RGB888` 스트림을 사용하며, 모델 입력 직전에 BGR에서 RGB로 변환합니다.
+
 ## INT8 카메라 시각 시험
 
 ```bash

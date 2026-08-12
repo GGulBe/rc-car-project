@@ -226,3 +226,142 @@ vcgencmd get_throttled
 ```
 
 최종 모델에서는 동일 시험을 반복한 뒤 정확도 손실, Raspberry Pi 전체 FPS, 발열 안정성을 함께 고려해 FP32 또는 INT8 배포 방식을 선택합니다.
+
+## 2026-08-12 Raspberry Pi 4B 실측 결과
+
+### 시험 환경
+
+| 항목 | 확인값 |
+|---|---|
+| 보드 | Raspberry Pi 4 Model B Rev 1.5 |
+| RAM | 4GB급, OS 확인값 3.7GiB |
+| 운영체제 | Debian GNU/Linux 13 (trixie), 64-bit ARM |
+| Kernel | Linux 6.18.34+rpt-rpi-v8 |
+| CPU 논리 코어 | 4 |
+| 카메라 | OV5647 CSI |
+| 카메라 스트림 | 640×480, 약 30 FPS |
+| 모델 입력 | 320×240 RGB, NCHW, float32 |
+| OpenCV | 4.10.0 |
+| ONNX Runtime | 1.27.0, CPUExecutionProvider |
+| Python | 3.13.5 |
+| 냉각 | 방열판 및 냉각팬 없음 |
+| 시험 전 전원 상태 | `throttled=0x0` |
+
+카메라는 Picamera2/libcamera를 통해 정상적으로 열렸으며 실제 프레임은 `(480, 640, 3)`, `uint8`로 확인했습니다. FP32와 INT8 ONNX 모델 모두 입력 `[1,3,240,320]`, 출력 `[1,5,15,20]`, 유한한 float32 출력을 생성했습니다.
+
+### 색상 채널 오류와 수정
+
+초기 시험에서는 Picamera2 스트림을 `BGR888`로 요청했고 얼굴과 피부가 파란색으로 표시됐습니다. Picamera2/libcamera의 포맷 이름과 Python 배열의 채널 순서는 직관과 다릅니다.
+
+```text
+잘못된 초기 경로:
+Picamera2 BGR888 → Python RGB 배열 → OpenCV에 그대로 표시
+                                  → 전처리에서 BGR→RGB 추가 변환
+
+수정된 경로:
+Picamera2 RGB888 → Python BGR 배열 → OpenCV 정상 표시
+                                  → 모델 입력에서 BGR→RGB 변환
+```
+
+수정 후 피부색과 화면 색상이 정상으로 돌아왔고 사람 bounding box도 정상적으로 표시됐습니다. 따라서 색상 수정 전 시험은 속도와 발열 참고에는 사용할 수 있지만 검출 품질 판단에서는 제외합니다.
+
+### CPU 스레드별 성능과 발열
+
+같은 INT8 임시 모델을 이용해 ONNX Runtime CPU thread 수를 비교했습니다.
+
+| 설정 | 평균 추론 | P95 추론 | 모델 FPS 환산 | 평균 camera-to-result | 최고 온도 | 종료 상태 |
+|---|---:|---:|---:|---:|---:|---|
+| 2 threads, 시험 1 | 90.22ms | 94.39ms | 11.1 FPS | 136.20ms | 71.58°C | 사용자 정상 종료 |
+| 2 threads, 시험 2 | 89.95ms | 93.99ms | 11.1 FPS | 137.38ms | 68.65°C | 사용자 정상 종료 |
+| 3 threads | 66.96ms | 75.17ms | 14.9 FPS | 115.13ms | 75.47°C | 75°C 안전 종료 |
+| 4 threads | 62.06ms | 83.18ms | 16.1 FPS | 111.92ms | 78.39°C | 78°C 안전 종료 |
+
+3 threads는 2 threads보다 빠르지만 냉각장치가 없는 상태에서 안전 온도에 도달했습니다. 4 threads는 3 threads보다 평균 추론시간이 약 4.9ms만 짧으면서 온도는 더 높아졌습니다.
+
+따라서 현재 하드웨어의 지속 운용 기본값은 다음과 같습니다.
+
+```text
+ONNX Runtime provider : CPUExecutionProvider
+intra-op threads      : 2
+inter-op threads      : 1
+confidence threshold  : 0.20
+NMS IoU threshold     : 0.20
+thermal stop          : 75°C
+```
+
+방열판이나 팬을 추가하면 3 threads를 다시 시험할 수 있지만, 냉각장치가 없는 현재 상태에서는 2 threads를 기본값으로 사용합니다. 모든 시험에서 `throttled=0x0`을 유지했습니다.
+
+### 색상 수정 후 대표 유효 시험
+
+대표 결과 폴더:
+
+```text
+pi_int8_camera_results/20260812_153248/
+```
+
+| 항목 | 결과 |
+|---|---:|
+| 실행시간 | 120초 |
+| 처리 프레임 | 1,098 |
+| 검출 발생 프레임 | 1,013 |
+| 총 검출 박스 | 1,402 |
+| 프레임당 검출 박스 | 1.28 |
+| 평균 추론시간 | 90.63ms |
+| P95 추론시간 | 95.65ms |
+| 평균 전체 loop 시간 | 97.36ms |
+| 평균 camera-to-result | 137.75ms |
+| P95 camera-to-result | 155.92ms |
+| 평균 온도 | 66.37°C |
+| 최고 온도 | 72.55°C |
+| 시작/종료 throttling | `0x0` / `0x0` |
+
+Confidence 분포:
+
+| 통계 | 값 |
+|---|---:|
+| 평균 | 0.3803 |
+| 중앙값 | 0.3928 |
+| P95 | 0.5748 |
+| 최소 | 0.2020 |
+| 최대 | 0.6309 |
+
+이 실행에서는 장면 키를 누르지 않아 `scenario=unlabeled`로 저장됐습니다. 따라서 CSV만으로 거리별 검출률이나 빈 배경 오검출률을 계산할 수는 없습니다. 다만 VNC에서 사용자가 다음 사항을 직접 확인했습니다.
+
+- 피부색과 카메라 색상 정상
+- 한 명의 사람 bounding box 위치 정상
+- 사람이 없는 배경에서 눈에 띄는 오검출 없음
+- 화면 표시와 실행 종료 정상
+
+이는 배포 경로와 시각적 동작에 대한 1차 통과 결과이지 정답 라벨 기반 정확도 검증은 아닙니다.
+
+### 현재 판단
+
+1. Raspberry Pi 4B에서 OV5647과 INT8 ONNX 모델을 함께 실행할 수 있습니다.
+2. 냉각장치가 없을 때 2 threads가 속도와 온도의 안정적인 절충점입니다.
+3. 약 11 FPS의 모델 처리와 약 138ms의 camera-to-result 지연을 확인했습니다.
+4. Confidence `0.20`에서 가까운 사람과 화면 표시가 정상 작동했습니다.
+5. 색상 순서가 검출 결과에 영향을 줄 수 있으므로 `RGB888` Picamera2 설정을 유지해야 합니다.
+6. 현재 모델은 최종 DSConv+Residual+FPN+Anchor-free 모델이 아닌 임시 INT8 모델입니다.
+7. 최종 모델 선정 후 ONNX FP32/INT8 변환과 동일한 Raspberry Pi 시험을 다시 수행해야 합니다.
+
+### 아직 이 시험으로 확정할 수 없는 항목
+
+- Precision, Recall, F1, mAP
+- 작은 사람의 정답 기반 Recall
+- 실제 거리별 검출 한계
+- FP32 대비 INT8의 정답 기반 정확도 손실
+- 장시간 실제 RC카 통합 운용의 온도
+- C++ 카메라·지도 표시 코드와 통합했을 때의 전체 지연
+- 사람과 로봇 사이의 실제 미터 단위 거리
+
+위 항목은 최종 모델, 정답 라벨 데이터, 실제 거리 표식 및 C++ 통합 환경을 확보한 다음 별도로 검증합니다.
+
+### 다음 단계
+
+1. 학교 노트북 학습 결과 회수 및 실험별 `best.pt` 비교
+2. 최종 구조와 checkpoint 선정
+3. PyTorch → ONNX FP32 변환 및 수치 일치 검사
+4. Static INT8 PTQ와 정답 기반 정확도 비교
+5. 최종 ONNX INT8을 Raspberry Pi에서 2 threads로 재시험
+6. 필요 시 냉각장치 추가 후 3 threads 재검토
+7. 최종 C++ 카메라 파이프라인과 timestamp 계약으로 통합

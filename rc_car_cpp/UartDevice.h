@@ -6,7 +6,7 @@
 class UartDevice
 {
 public:
-    struct gps
+    struct gpsdata
     {
         bool gpsfix;//위성이 잡혔는지 확인하는 변수
         double lat;
@@ -17,7 +17,7 @@ public:
     
     explicit UartDevice(const std::string& devicePath = "/dev/serial0");
     ~UartDevice();
-    std::string readRmc()
+    std::string readRmc();
     std::string readLine();
     gps parseRmc(const std::string& line);
 private:

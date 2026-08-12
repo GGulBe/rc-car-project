@@ -81,7 +81,6 @@ int main() {
         while (true) {
             if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
             
-            const Bno055::Tilt tilt = imu.readMotion();
             std::cout << gps.readLine() << std::endl;
             const auto now = std::chrono::steady_clock::now();
             const double elapsed = std::chrono::duration<double>(now - fpsStart).count();

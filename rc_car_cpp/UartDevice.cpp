@@ -21,7 +21,6 @@ UartDevice::UartDevice(const std::string& devicePath)
     }
     
     configure();
-    gpsdata = {0,0.0,0.0,nullptr,nullptr};
     
 }
 

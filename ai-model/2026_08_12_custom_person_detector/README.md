@@ -2,6 +2,8 @@
 
 RC카의 제한된 연산 자원에서 실시간 사람 감지를 수행하기 위해 처음부터 설계한 경량 객체 탐지 모델입니다. YOLO 모델을 사용하는 프로젝트가 아니며, 데이터 라벨 저장 형식만 YOLO 형식(`class cx cy w h`)을 사용합니다.
 
+> 캘리브레이션 팀과 라이브 영상 연동을 위한 입력·출력 규약과 확인 사항은 [`CALIBRATION_TEAM_INTEGRATION_GUIDE.md`](CALIBRATION_TEAM_INTEGRATION_GUIDE.md)를 참고하세요.
+
 ## 현재 상태
 
 - Group-aware 데이터 분할 및 무결성 검사: 완료
@@ -163,4 +165,3 @@ MX570 A 4GB, 전체 Train/Valid 데이터, AMP, batch 4 기준입니다.
 - Python/Jupyter 캐시
 
 데이터와 대용량 산출물은 Git 또는 별도 스토리지 정책이 정해진 뒤 관리합니다.
-

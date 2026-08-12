@@ -178,6 +178,7 @@ class Picamera2Source:
         self.width = width
         self.height = height
         self.fps = fps
+        self.last_metadata = {}
         self.camera = Picamera2(camera_num=camera_number)
         configuration = self.camera.create_video_configuration(
             main={"size": (width, height), "format": "BGR888"},
@@ -190,7 +191,12 @@ class Picamera2Source:
 
     def read(self):
         try:
-            frame = self.camera.capture_array("main")
+            request = self.camera.capture_request()
+            try:
+                frame = request.make_array("main")
+                self.last_metadata = request.get_metadata()
+            finally:
+                request.release()
             return frame is not None, frame
         except Exception as error:
             print(f"Picamera2 capture error: {error}")

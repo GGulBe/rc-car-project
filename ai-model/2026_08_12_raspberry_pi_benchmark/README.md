@@ -17,8 +17,10 @@ RC-Car Person Detection 모델을 Raspberry Pi 4B CPU에서 실제 카메라와 
 | 파일 | 설명 |
 |---|---|
 | `pi_first_benchmark.py` | 측정 및 결과 저장 프로그램 |
+| `pi_int8_camera_test.py` | VNC에서 INT8 사람 검출을 확인하고 수치를 저장하는 주 시험 프로그램 |
 | `01_setup_pi.sh` | Raspberry Pi 최초 환경 설치 |
-| `02_run_pi_test.sh` | 기본 설정으로 전체 시험 실행 |
+| `02_run_int8_camera_test.sh` | INT8 카메라 시각 시험 실행 |
+| `03_run_fp32_int8_benchmark.sh` | FP32/INT8 비교 벤치마크 실행 |
 | `requirements-pi.txt` | Python 패키지 목록 |
 | `.gitignore` | 가상환경과 측정 결과 제외 |
 
@@ -34,9 +36,11 @@ RC-Car Person Detection 모델을 Raspberry Pi 4B CPU에서 실제 카메라와 
 ├── person_detector_fp32.onnx
 ├── person_detector_int8.onnx
 ├── pi_first_benchmark.py
+├── pi_int8_camera_test.py
 ├── requirements-pi.txt
 ├── 01_setup_pi.sh
-└── 02_run_pi_test.sh
+├── 02_run_int8_camera_test.sh
+└── 03_run_fp32_int8_benchmark.sh
 ```
 
 ## 모델 입출력
@@ -76,7 +80,7 @@ cd /복사한/경로/2026_08_12_raspberry_pi_benchmark
 최초 한 번만 다음을 실행합니다.
 
 ```bash
-chmod +x 01_setup_pi.sh 02_run_pi_test.sh
+chmod +x 01_setup_pi.sh 02_run_int8_camera_test.sh 03_run_fp32_int8_benchmark.sh
 ./01_setup_pi.sh
 ```
 
@@ -96,35 +100,42 @@ chmod +x 01_setup_pi.sh 02_run_pi_test.sh
 ls -l /dev/video*
 ```
 
-기본 카메라 번호는 `0`입니다. OV5647 CSI 카메라는 RAW 장치인 `/dev/video0`을 OpenCV로 직접 열지 않고 Picamera2/libcamera를 사용합니다. `rpicam-hello --list-cameras`의 번호가 다르면 `02_run_pi_test.sh`의 `--camera 0`을 변경합니다.
+기본 카메라 번호는 `0`입니다. OV5647 CSI 카메라는 RAW 장치인 `/dev/video0`을 OpenCV로 직접 열지 않고 Picamera2/libcamera를 사용합니다. `rpicam-hello --list-cameras`의 번호가 다르면 실행 스크립트의 `--camera 0`을 변경합니다.
 
-## 시험 실행
+## INT8 카메라 시각 시험
 
 ```bash
-./02_run_pi_test.sh
+./02_run_int8_camera_test.sh
 ```
 
 기본 설정:
 
 | 항목 | 값 |
 |---|---:|
-| FP32 단독 측정 | 180초 |
-| INT8 단독 측정 | 180초 |
-| 동일 프레임 비교 | 300프레임 |
+| INT8 카메라 시험 | 600초 |
 | ONNX Runtime CPU thread | 4 |
 | 카메라 요청 크기 | 640×480 |
 | 카메라 요청 FPS | 30 |
 | 모델 입력 | 320×240 |
+| 온도 자동 종료 | 78°C |
+
+VNC 화면에 사람 박스, confidence, 추론시간, 전체 FPS와 CPU 온도가 표시됩니다. `Q`를 누르면 정상 종료되며 그 시점까지의 결과가 보존됩니다. `[`와 `]` 키로 confidence threshold를 0.05씩 조절할 수 있고 변경된 threshold도 프레임별 CSV에 기록됩니다.
 
 영상과 카메라 이미지는 저장하지 않습니다. CSV와 JSON 숫자 결과만 저장합니다.
 
 화면을 보면서 시험하려면 다음처럼 직접 실행할 수 있습니다.
 
 ```bash
-.venv/bin/python pi_first_benchmark.py --preview
+.venv/bin/python pi_int8_camera_test.py --duration 600
 ```
 
-다만 순수 성능 측정에서는 GUI 출력 비용을 제외하기 위해 preview를 끈 기본 실행을 권장합니다.
+화면 없이 순수 처리속도만 측정하려면 `--no-preview`를 추가합니다.
+
+FP32와 INT8을 같은 조건으로 비교하는 추가 시험은 다음과 같습니다.
+
+```bash
+./03_run_fp32_int8_benchmark.sh
+```
 
 ## 시험 장면
 
@@ -143,22 +154,22 @@ ls -l /dev/video*
 실행 후 다음 폴더가 생성됩니다.
 
 ```text
-pi_test_results/YYYYMMDD_HHMMSS/
+pi_int8_camera_results/YYYYMMDD_HHMMSS/
 ├── summary.json
 ├── frame_metrics.csv
-└── comparison.csv
+└── detections.csv
 ```
 
 ### `summary.json`
 
 - Raspberry Pi OS, CPU, RAM, Python, OpenCV, ONNX Runtime 버전
 - 실제 카메라 해상도와 카메라가 보고한 FPS
-- 모델 크기, 입출력 shape, 로딩 시간
-- 평균/중앙값/P95 추론 지연시간
-- 카메라 포함 전체 FPS
-- CPU 온도, 프로세스 RAM
+- 평균/중앙값/P95 추론 지연시간과 카메라 포함 전체 FPS
+- CPU 온도·주파수·사용률과 프로세스 CPU·RAM
+- 카메라 timestamp부터 검출 결과가 만들어질 때까지 걸린 시간
+- 노출시간, gain, Lux, 실제 프레임 주기
 - 시험 시작/종료 throttling 상태
-- FP32/INT8 검출 일치 요약
+- confidence 및 사람 박스 크기 분포
 
 ### `frame_metrics.csv`
 
@@ -171,15 +182,15 @@ pi_test_results/YYYYMMDD_HHMMSS/
 - 전체 반복
 - CPU 사용률, RAM, 온도, 검출 개수
 
-### `comparison.csv`
+### `detections.csv`
 
-동일 프레임에 FP32와 INT8을 차례로 입력해 다음을 기록합니다.
+검출된 사람마다 다음 값을 기록합니다.
 
-- 각 모델 추론시간
-- 검출 개수와 개수 일치 여부
-- 일치한 박스 수
-- 일치 박스의 평균 IoU
-- 평균 confidence 차이
+- confidence와 프레임 번호
+- 모델 입력 및 카메라 해상도 기준 bounding box
+- 박스 중심점과 사람 발 위치에 가까운 bottom-center
+- 정규화된 중심 및 bottom-center 좌표
+- 사람 박스 너비·높이와 크기 구간
 
 ## 결과 해석 시 주의사항
 

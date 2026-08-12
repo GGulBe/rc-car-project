@@ -2,3 +2,4 @@
 __pycache__/
 *.pyc
 pi_test_results/
+pi_int8_camera_results/

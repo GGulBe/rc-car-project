@@ -1,0 +1,203 @@
+# Raspberry Pi FP32 / INT8 1차 벤치마크
+
+RC-Car Person Detection 모델을 Raspberry Pi 4B CPU에서 실제 카메라와 함께 실행해 보는 1차 배포 시험 코드입니다.
+
+이 시험의 목적은 최종 정확도를 결정하는 것이 아니라 다음 사항을 먼저 확인하는 것입니다.
+
+- ONNX FP32와 Static INT8 모델이 Raspberry Pi에서 정상적으로 로드되는가
+- 카메라 입력을 포함했을 때 실제 처리속도와 지연시간은 어느 정도인가
+- INT8 경량화가 속도, 메모리 및 온도에 어떤 차이를 만드는가
+- 같은 프레임에서 FP32와 INT8의 검출 개수, confidence, bounding box가 얼마나 일치하는가
+- 장시간 CPU 추론 중 저전압 또는 thermal throttling이 발생하는가
+
+> 현재 사용 모델은 최종 학습 모델이 아니라 Raspberry Pi 실행 경로를 검증하기 위한 임시 모델입니다. 최종 `best.pt` 선정 후 같은 시험을 다시 실행해야 합니다.
+
+## 파일 구성
+
+| 파일 | 설명 |
+|---|---|
+| `pi_first_benchmark.py` | 측정 및 결과 저장 프로그램 |
+| `01_setup_pi.sh` | Raspberry Pi 최초 환경 설치 |
+| `02_run_pi_test.sh` | 기본 설정으로 전체 시험 실행 |
+| `requirements-pi.txt` | Python 패키지 목록 |
+| `.gitignore` | 가상환경과 측정 결과 제외 |
+
+모델 파일은 저장소의 `2026_08_12_calibration_handoff` 폴더에 있습니다.
+
+- `person_detector_fp32.onnx`
+- `person_detector_int8.onnx`
+
+실행 전 두 모델을 이 README와 같은 폴더로 복사해야 합니다.
+
+```text
+2026_08_12_raspberry_pi_benchmark/
+├── person_detector_fp32.onnx
+├── person_detector_int8.onnx
+├── pi_first_benchmark.py
+├── requirements-pi.txt
+├── 01_setup_pi.sh
+└── 02_run_pi_test.sh
+```
+
+## 모델 입출력
+
+입력:
+
+```text
+Shape  : [1, 3, 240, 320]
+Layout : NCHW
+Type   : float32
+Color  : RGB
+Range  : 0.0 ~ 1.0
+```
+
+출력:
+
+```text
+Shape : [1, 5, 15, 20]
+
+0 : objectness logit
+1 : center X offset logit
+2 : center Y offset logit
+3 : bounding-box width logit
+4 : bounding-box height logit
+```
+
+현재 임시 후처리 설정은 confidence `0.20`, NMS IoU `0.20`입니다.
+
+## Raspberry Pi 준비
+
+Raspberry Pi 터미널에서 이 폴더로 이동합니다.
+
+```bash
+cd /복사한/경로/2026_08_12_raspberry_pi_benchmark
+```
+
+최초 한 번만 다음을 실행합니다.
+
+```bash
+chmod +x 01_setup_pi.sh 02_run_pi_test.sh
+./01_setup_pi.sh
+```
+
+스크립트는 다음 작업을 수행합니다.
+
+1. `python3-venv`, `python3-opencv` 설치
+2. 시스템 OpenCV를 사용할 수 있는 `.venv` 생성
+3. ONNX Runtime과 `psutil` 설치
+4. 필수 라이브러리 import 검사
+
+마지막에 `SETUP PASS`가 출력되어야 합니다.
+
+카메라 장치를 확인합니다.
+
+```bash
+ls -l /dev/video*
+```
+
+기본 카메라는 `/dev/video0`입니다. 번호가 다르면 `02_run_pi_test.sh`의 `--camera 0`을 변경합니다.
+
+## 시험 실행
+
+```bash
+./02_run_pi_test.sh
+```
+
+기본 설정:
+
+| 항목 | 값 |
+|---|---:|
+| FP32 단독 측정 | 180초 |
+| INT8 단독 측정 | 180초 |
+| 동일 프레임 비교 | 300프레임 |
+| ONNX Runtime CPU thread | 4 |
+| 카메라 요청 크기 | 640×480 |
+| 카메라 요청 FPS | 30 |
+| 모델 입력 | 320×240 |
+
+영상과 카메라 이미지는 저장하지 않습니다. CSV와 JSON 숫자 결과만 저장합니다.
+
+화면을 보면서 시험하려면 다음처럼 직접 실행할 수 있습니다.
+
+```bash
+.venv/bin/python pi_first_benchmark.py --preview
+```
+
+다만 순수 성능 측정에서는 GUI 출력 비용을 제외하기 위해 preview를 끈 기본 실행을 권장합니다.
+
+## 시험 장면
+
+실제 RC카 카메라 높이와 각도에 가깝게 놓고 다음 장면을 골고루 포함합니다.
+
+1. 사람이 없는 배경
+2. 가까운 사람 1명
+3. 중간 거리 사람 1명
+4. 가능한 범위에서 먼 사람
+5. 사람이 좌우로 이동하는 장면
+
+두 모델의 공정한 비교를 위해 시험 중 카메라 위치와 조명을 가능한 한 유지합니다.
+
+## 수집 결과
+
+실행 후 다음 폴더가 생성됩니다.
+
+```text
+pi_test_results/YYYYMMDD_HHMMSS/
+├── summary.json
+├── frame_metrics.csv
+└── comparison.csv
+```
+
+### `summary.json`
+
+- Raspberry Pi OS, CPU, RAM, Python, OpenCV, ONNX Runtime 버전
+- 실제 카메라 해상도와 카메라가 보고한 FPS
+- 모델 크기, 입출력 shape, 로딩 시간
+- 평균/중앙값/P95 추론 지연시간
+- 카메라 포함 전체 FPS
+- CPU 온도, 프로세스 RAM
+- 시험 시작/종료 throttling 상태
+- FP32/INT8 검출 일치 요약
+
+### `frame_metrics.csv`
+
+각 프레임의 다음 시간을 별도로 기록합니다.
+
+- 카메라 캡처
+- 전처리
+- ONNX 추론
+- 후처리
+- 전체 반복
+- CPU 사용률, RAM, 온도, 검출 개수
+
+### `comparison.csv`
+
+동일 프레임에 FP32와 INT8을 차례로 입력해 다음을 기록합니다.
+
+- 각 모델 추론시간
+- 검출 개수와 개수 일치 여부
+- 일치한 박스 수
+- 일치 박스의 평균 IoU
+- 평균 confidence 차이
+
+## 결과 해석 시 주의사항
+
+- `model FPS`는 모델 추론만 기준으로 계산한 수치입니다.
+- `end-to-end FPS`는 카메라 캡처, 전처리, 추론, 후처리를 포함합니다.
+- P95 지연시간은 느린 쪽 5% 구간의 경계를 보여주므로 평균과 함께 봐야 합니다.
+- `detection count agreement`는 두 모델의 상대적인 일치도이지 정답 기반 정확도가 아닙니다.
+- 실제 mAP, Precision, Recall, F1은 정답 라벨이 있는 valid/test 데이터로 별도 평가해야 합니다.
+- `vcgencmd get_throttled`가 `0x0`이 아니면 저전압 또는 온도 제한 기록을 해석해야 합니다.
+- 현재 임시 모델 결과만으로 최종 FP32/INT8 배포 방식을 결정하지 않습니다.
+
+## 추가 환경 정보
+
+시험 결과와 함께 다음 출력도 기록합니다.
+
+```bash
+uname -a
+cat /etc/os-release
+vcgencmd get_throttled
+```
+
+최종 모델에서는 동일 시험을 반복한 뒤 정확도 손실, Raspberry Pi 전체 FPS, 발열 안정성을 함께 고려해 FP32 또는 INT8 배포 방식을 선택합니다.

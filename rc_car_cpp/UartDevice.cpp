@@ -97,9 +97,9 @@ std::string UartDevice::readLine() {
     return line;
 }
 
-gpsdata UartDevice::parseRmc(const std::string& line)
+UartDevice::gpsdata UartDevice::parseRmc(const std::string& line)
 {
-    gpsdata result;
+    gpsdata result{};
 
     std::stringstream ss(line);
     std::string token;
@@ -109,19 +109,17 @@ gpsdata UartDevice::parseRmc(const std::string& line)
         fields.push_back(token);
     }
 
-    // RMC는 최소한 이 정도 필드가 있어야 함
     if (fields.size() < 10) {
         return result;
     }
 
-    // RMC 문장인지 확인
     if (fields[0] != "$GPRMC" && fields[0] != "$GNRMC") {
         return result;
     }
 
     result.utc = fields[1];
 
-    // A = valid, V = invalid
+    // A = GPS 유효, V = GPS 무효
     result.gpsfix = (fields[2] == "A");
 
     if (!fields[3].empty()) {
@@ -150,8 +148,7 @@ gpsdata UartDevice::parseRmc(const std::string& line)
         }
     }
 
-    result.data = fields[9];
+    result.date = fields[9];
 
     return result;
 }
-

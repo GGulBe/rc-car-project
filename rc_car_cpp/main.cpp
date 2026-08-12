@@ -40,7 +40,7 @@ int main() {
         ServoController servos(pwm);
         MotorController motors(pwm);
         Bno055 imu(bno055I2c);
-        UartDevice gps(i2c);
+        UartDevice gps();
 
 
         servos.setCalibration(0, { P0_MIN, P0_MAX});

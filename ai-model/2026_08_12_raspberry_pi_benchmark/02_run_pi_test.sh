@@ -5,6 +5,7 @@ cd "$(dirname "$0")"
 
 .venv/bin/python pi_first_benchmark.py \
   --camera 0 \
+  --camera-backend picamera2 \
   --capture-width 640 \
   --capture-height 480 \
   --capture-fps 30 \

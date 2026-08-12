@@ -83,9 +83,10 @@ chmod +x 01_setup_pi.sh 02_run_pi_test.sh
 스크립트는 다음 작업을 수행합니다.
 
 1. `python3-venv`, `python3-opencv` 설치
-2. 시스템 OpenCV를 사용할 수 있는 `.venv` 생성
-3. ONNX Runtime과 `psutil` 설치
-4. 필수 라이브러리 import 검사
+2. CSI 카메라용 Picamera2와 OpenCV 설치
+3. 시스템 패키지를 사용할 수 있는 `.venv` 생성
+4. ONNX Runtime과 `psutil` 설치
+5. 필수 라이브러리 import 검사
 
 마지막에 `SETUP PASS`가 출력되어야 합니다.
 
@@ -95,7 +96,7 @@ chmod +x 01_setup_pi.sh 02_run_pi_test.sh
 ls -l /dev/video*
 ```
 
-기본 카메라는 `/dev/video0`입니다. 번호가 다르면 `02_run_pi_test.sh`의 `--camera 0`을 변경합니다.
+기본 카메라 번호는 `0`입니다. OV5647 CSI 카메라는 RAW 장치인 `/dev/video0`을 OpenCV로 직접 열지 않고 Picamera2/libcamera를 사용합니다. `rpicam-hello --list-cameras`의 번호가 다르면 `02_run_pi_test.sh`의 `--camera 0`을 변경합니다.
 
 ## 시험 실행
 

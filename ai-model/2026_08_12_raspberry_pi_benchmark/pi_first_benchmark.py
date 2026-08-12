@@ -32,6 +32,8 @@ NMS_THRESHOLD = 0.20
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--camera", default="0", help="Camera index or video path")
+    parser.add_argument("--camera-backend", choices=("auto", "picamera2", "opencv"),
+                        default="auto", help="CSI camera uses picamera2")
     parser.add_argument("--capture-width", type=int, default=640)
     parser.add_argument("--capture-height", type=int, default=480)
     parser.add_argument("--capture-fps", type=float, default=30.0)
@@ -169,7 +171,59 @@ def make_session(path, threads):
     return session, load_ms
 
 
-def open_camera(source, width, height, fps):
+class Picamera2Source:
+    def __init__(self, camera_number, width, height, fps):
+        from picamera2 import Picamera2
+
+        self.width = width
+        self.height = height
+        self.fps = fps
+        self.camera = Picamera2(camera_num=camera_number)
+        configuration = self.camera.create_video_configuration(
+            main={"size": (width, height), "format": "BGR888"},
+            controls={"FrameRate": float(fps)},
+            buffer_count=4,
+        )
+        self.camera.configure(configuration)
+        self.camera.start()
+        time.sleep(2.0)
+
+    def read(self):
+        try:
+            frame = self.camera.capture_array("main")
+            return frame is not None, frame
+        except Exception as error:
+            print(f"Picamera2 capture error: {error}")
+            return False, None
+
+    def get(self, property_id):
+        if property_id == cv2.CAP_PROP_FRAME_WIDTH:
+            return float(self.width)
+        if property_id == cv2.CAP_PROP_FRAME_HEIGHT:
+            return float(self.height)
+        if property_id == cv2.CAP_PROP_FPS:
+            return float(self.fps)
+        return 0.0
+
+    def getBackendName(self):
+        return "Picamera2/libcamera"
+
+    def release(self):
+        self.camera.stop()
+        self.camera.close()
+
+
+def open_camera(source, width, height, fps, backend):
+    if backend in ("auto", "picamera2") and source.isdigit():
+        try:
+            camera = Picamera2Source(int(source), width, height, fps)
+            print("Camera backend: Picamera2/libcamera")
+            return camera
+        except Exception as error:
+            if backend == "picamera2":
+                raise RuntimeError(f"Picamera2 camera could not be opened: {error}") from error
+            print(f"Picamera2 unavailable; trying OpenCV: {error}")
+
     parsed_source = int(source) if source.isdigit() else source
     cap = cv2.VideoCapture(parsed_source)
     if not cap.isOpened():
@@ -328,7 +382,8 @@ def main():
     int8, int8_load_ms = make_session(int8_path, args.threads)
     fp32_input = fp32.get_inputs()[0].name
     int8_input = int8.get_inputs()[0].name
-    cap = open_camera(args.camera, args.capture_width, args.capture_height, args.capture_fps)
+    cap = open_camera(args.camera, args.capture_width, args.capture_height,
+                      args.capture_fps, args.camera_backend)
     actual_camera = {
         "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
         "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),

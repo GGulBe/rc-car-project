@@ -19,7 +19,7 @@ public:
     ~UartDevice();
     std::string readRmc();
     std::string readLine();
-    gps parseRmc(const std::string& line);
+    gpsdata parseRmc(const std::string& line);
 private:
     int fd_ = -1;
     void configure();

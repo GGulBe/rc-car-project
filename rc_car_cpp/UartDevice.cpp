@@ -21,6 +21,7 @@ UartDevice::UartDevice(const std::string& devicePath)
     }
     
     configure();
+    gpsdata = {0,0.0,0.0,nullptr,nullptr};
     
 }
 
@@ -56,6 +57,8 @@ void UartDevice::configure()
         throw systemError("Failed to get UART settings");
     }
 }
+
+
 
 std::string UartDevice::readRmc()
 {
@@ -95,9 +98,9 @@ std::string UartDevice::readLine() {
     return line;
 }
 
-gps parseRmc(const std::string& line)
+gpsdata parseRmc(const std::string& line)
 {
-    gps result;
+    gpsdata result;
 
     std::stringstream ss(line);
     std::string token;

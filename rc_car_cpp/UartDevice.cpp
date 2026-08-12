@@ -6,6 +6,10 @@
 #include <unistd.h>
 #include <cstddef>
 #include <cstdint>
+#include <sstream>
+#include <string>
+#include <vector>
+
 UartDevice::UartDevice(const std::string& devicePath)
 {
     fd_ = ::open(devicePath.c_str(), O_RDWR | O_CLOEXEC | O_NOCTTY);
@@ -53,6 +57,17 @@ void UartDevice::configure()
     }
 }
 
+std::string UartDevice::readRmc()
+{
+    while (true) {
+        std::string line = readLine();
+
+        if (line.rfind("$GPRMC", 0) == 0 || line.rfind("$GNRMC", 0) == 0) {
+            return line;
+        }
+    }
+}
+
 std::string UartDevice::readLine() {
     std::string line;
     char ch;
@@ -78,5 +93,63 @@ std::string UartDevice::readLine() {
     }
 
     return line;
+}
+
+gps parseRmc(const std::string& line)
+{
+    gps result;
+
+    std::stringstream ss(line);
+    std::string token;
+    std::vector<std::string> fields;
+
+    while (std::getline(ss, token, ',')) {
+        fields.push_back(token);
+    }
+
+    // RMC는 최소한 이 정도 필드가 있어야 함
+    if (fields.size() < 10) {
+        return result;
+    }
+
+    // RMC 문장인지 확인
+    if (fields[0] != "$GPRMC" && fields[0] != "$GNRMC") {
+        return result;
+    }
+
+    result.utc = fields[1];
+
+    // A = valid, V = invalid
+    result.gpsfix = (fields[2] == "A");
+
+    if (!fields[3].empty()) {
+        double rawLat = std::stod(fields[3]);
+
+        double degree = static_cast<int>(rawLat / 100);
+        double minute = rawLat - degree * 100;
+
+        result.lat = degree + minute / 60.0;
+
+        if (fields[4] == "S") {
+            result.lat *= -1.0;
+        }
+    }
+
+    if (!fields[5].empty()) {
+        double rawLon = std::stod(fields[5]);
+
+        double degree = static_cast<int>(rawLon / 100);
+        double minute = rawLon - degree * 100;
+
+        result.lon = degree + minute / 60.0;
+
+        if (fields[6] == "W") {
+            result.lon *= -1.0;
+        }
+    }
+
+    result.data = fields[9];
+
+    return result;
 }
 

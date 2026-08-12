@@ -8,7 +8,7 @@
 
 Bno055::Bno055(I2cDevice& i2c): i2c_(i2c)
 {  
-    imu.initialize();
+    initialize();
 }
     
 

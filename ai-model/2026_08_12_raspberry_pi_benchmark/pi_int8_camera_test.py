@@ -18,16 +18,128 @@ import numpy as np
 import onnxruntime as ort
 import psutil
 
-from pi_first_benchmark import (
-    IMAGE_HEIGHT,
-    IMAGE_WIDTH,
-    decode,
-    open_camera,
-    preprocess,
-    summarize,
-    temperature_c,
-    throttled_status,
-)
+
+IMAGE_WIDTH = 320
+IMAGE_HEIGHT = 240
+
+
+def summarize(values):
+    if not values:
+        return {"mean": None, "median": None, "p95": None,
+                "min": None, "max": None}
+    array = np.asarray(values, dtype=np.float64)
+    return {
+        "mean": float(np.mean(array)),
+        "median": float(np.percentile(array, 50)),
+        "p95": float(np.percentile(array, 95)),
+        "min": float(np.min(array)),
+        "max": float(np.max(array)),
+    }
+
+
+def sigmoid(value):
+    return 1.0 / (1.0 + np.exp(-np.clip(value, -50.0, 50.0)))
+
+
+def box_iou(first, second):
+    x1, y1 = max(first[0], second[0]), max(first[1], second[1])
+    x2, y2 = min(first[2], second[2]), min(first[3], second[3])
+    intersection = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+    first_area = max(0.0, first[2] - first[0]) * max(0.0, first[3] - first[1])
+    second_area = max(0.0, second[2] - second[0]) * max(0.0, second[3] - second[1])
+    union = first_area + second_area - intersection
+    return intersection / union if union > 0.0 else 0.0
+
+
+def nms(boxes, threshold):
+    remaining = sorted(boxes, key=lambda box: box[4], reverse=True)
+    selected = []
+    while remaining:
+        best = remaining.pop(0)
+        selected.append(best)
+        remaining = [box for box in remaining if box_iou(best, box) < threshold]
+    return selected
+
+
+def preprocess(frame):
+    start = time.perf_counter()
+    image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    image = cv2.resize(image, (IMAGE_WIDTH, IMAGE_HEIGHT))
+    image = image.astype(np.float32) / 255.0
+    image = np.transpose(image, (2, 0, 1))[None]
+    tensor = np.ascontiguousarray(image, dtype=np.float32)
+    return tensor, (time.perf_counter() - start) * 1000.0
+
+
+def decode(prediction, threshold, nms_threshold):
+    start = time.perf_counter()
+    grid_h, grid_w = prediction.shape[1:]
+    cell_w, cell_h = IMAGE_WIDTH / grid_w, IMAGE_HEIGHT / grid_h
+    objectness = sigmoid(prediction[0])
+    ys, xs = np.where(objectness >= threshold)
+    boxes = []
+    for y, x in zip(ys, xs):
+        confidence = float(objectness[y, x])
+        center_x = (float(x) + float(sigmoid(prediction[1, y, x]))) * cell_w
+        center_y = (float(y) + float(sigmoid(prediction[2, y, x]))) * cell_h
+        width = float(sigmoid(prediction[3, y, x])) * IMAGE_WIDTH
+        height = float(sigmoid(prediction[4, y, x])) * IMAGE_HEIGHT
+        x1 = float(np.clip(center_x - width / 2.0, 0, IMAGE_WIDTH))
+        y1 = float(np.clip(center_y - height / 2.0, 0, IMAGE_HEIGHT))
+        x2 = float(np.clip(center_x + width / 2.0, 0, IMAGE_WIDTH))
+        y2 = float(np.clip(center_y + height / 2.0, 0, IMAGE_HEIGHT))
+        if x2 > x1 and y2 > y1:
+            boxes.append([x1, y1, x2, y2, confidence])
+    return nms(boxes, nms_threshold), (time.perf_counter() - start) * 1000.0
+
+
+def temperature_c():
+    try:
+        value = float(Path("/sys/class/thermal/thermal_zone0/temp").read_text().strip())
+        return value / 1000.0 if value > 200.0 else value
+    except (OSError, ValueError):
+        return None
+
+
+def throttled_status():
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["vcgencmd", "get_throttled"], capture_output=True,
+            text=True, timeout=2, check=False,
+        )
+        return result.stdout.strip() or None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+class Picamera2Source:
+    def __init__(self):
+        from picamera2 import Picamera2
+
+        self.last_metadata = {}
+        self.camera = Picamera2(camera_num=0)
+        configuration = self.camera.create_video_configuration(
+            main={"size": (640, 480), "format": "BGR888"},
+            controls={"FrameRate": 30.0},
+            buffer_count=4,
+        )
+        self.camera.configure(configuration)
+        self.camera.start()
+        time.sleep(2.0)
+
+    def read(self):
+        request = self.camera.capture_request()
+        try:
+            frame = request.make_array("main")
+            self.last_metadata = request.get_metadata()
+        finally:
+            request.release()
+        return frame is not None, frame
+
+    def release(self):
+        self.camera.stop()
+        self.camera.close()
 
 
 def parse_args():
@@ -110,7 +222,7 @@ def main():
 
     session = make_session(model_path, args.threads)
     input_name = session.get_inputs()[0].name
-    camera = open_camera("0", 640, 480, 30.0, "picamera2")
+    camera = Picamera2Source()
     process = psutil.Process()
     process.cpu_percent(interval=None)
     psutil.cpu_percent(interval=None)

@@ -80,9 +80,7 @@ int main() {
 
         while (true) {
             if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
-            std::string rmsline = gps.readRmc();
-            UartDevice::gpsdata gpsdata = gps.parseRmc(rmsline);
-            std::cout << "gpsfix : " << gpsdata.gpsfix << "lat : " << gpsdata.lat <<  "lon : " << gpsdata.lon << "UTC : " << gpsdata.utc << "date : " << gpsdata.date << std::endl;
+
             const auto now = std::chrono::steady_clock::now();
             const double elapsed = std::chrono::duration<double>(now - fpsStart).count();
             if (elapsed >= 1.0) {
@@ -174,6 +172,12 @@ int main() {
                 servos.setAngle(0, cameraPan);
                 servos.setAngle(1, cameraTilt);
                 servos.setAngle(2, steeringAngle);
+            }
+            else if (key == 'g')
+            {
+                std::string rmsline = gps.readRmc();
+                UartDevice::gpsdata gpsdata = gps.parseRmc(rmsline);
+                std::cout << "gpsfix : " << gpsdata.gpsfix << "lat : " << gpsdata.lat <<  "lon : " << gpsdata.lon << "UTC : " << gpsdata.utc << "date : " << gpsdata.date << std::endl;
             }
             else if (key == 'q' || key == 'Q' || key == 27) {
                 break;

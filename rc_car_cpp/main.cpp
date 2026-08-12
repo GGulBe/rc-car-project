@@ -1,6 +1,7 @@
 #include <cerrno>
 #include <cstring>
 #include <opencv2/opencv.hpp>
+#include <opencv2/dnn.hpp>
 #include <chrono>
 #include <ctime>
 #include <iomanip>
@@ -18,6 +19,8 @@
 #include "I2CDevice.h"
 #include "util.h"
 #include "Bno055.h"
+#include "MapManager.h"
+#include "Detector.h"
 
 constexpr double P0_CENTER = -80.0;
 constexpr double P1_CENTER = 0.0;
@@ -62,6 +65,10 @@ int main() {
         }
         if (!camera.isOpened()) throw systemError("Failed to open Raspberry Pi camera");
 
+        // 위성지도 및 detector 초기화
+        MapManager mapManager(37.58635, 37.58719, 127.09746, 127.09833, "map.jpg");
+        Detector detector("person_detector_int8.onnx", 0.3f); 
+
         double speedSetting = 30.0;
         double driveCommand = 0.0;
         double steeringAngle = P2_CENTER;
@@ -75,13 +82,21 @@ int main() {
 
         TerminalInput keyboard;
         cv::namedWindow("Robot Camera Control", cv::WINDOW_AUTOSIZE);
+        // 위성지도 모니터링 창
+        cv::namedWindow("RC Car Real-time Monitoring", cv::WINDOW_AUTOSIZE);
+        
         std::cout << "Keyboard input is read from this terminal. Press W/A/S/D without Enter.\n";
 
         while (true) {
             if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
             
+            // FPS 측정용
+            frameCounter++;
+
+            // IMU 센서 데이터 읽기
             const Bno055::Tilt tilt = imu.readMotion();
-            std::cout <<"heading : "<<tilt.headingDeg <<" roll : "<< tilt.rollDeg <<" pitch : "<< tilt.pitchDeg << std::endl; 
+            std::cout << "heading : " << tilt.headingDeg << " roll : " << tilt.rollDeg << " pitch : " << tilt.pitchDeg << std::endl; 
+            
             const auto now = std::chrono::steady_clock::now();
             const double elapsed = std::chrono::duration<double>(now - fpsStart).count();
             if (elapsed >= 1.0) {
@@ -93,6 +108,17 @@ int main() {
             cv::Mat display = frame.clone();
             drawStatus(display, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps);
             cv::imshow("Robot Camera Control", display);
+
+            // 딥러닝 추론 및 위성지도 렌더링
+            bool person_detected = detector.detectPerson(frame);
+
+            float current_speed_ms = static_cast<float>(std::abs(driveCommand)) * 0.1f; // 예시 환산식 (필요시 수정)
+
+            double current_lat = 37.58680; 
+            double current_lon = 127.09790; 
+
+            cv::Mat display_map = mapManager.drawMarkers(current_lat, current_lon, person_detected, current_speed_ms);
+            cv::imshow("RC Car Real-time Monitoring", display_map);
 
             const int windowKey = cv::waitKey(1);
             int key = keyboard.readKey(0);

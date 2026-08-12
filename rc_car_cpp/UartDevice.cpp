@@ -97,7 +97,7 @@ std::string UartDevice::readLine() {
     return line;
 }
 
-gpsdata parseRmc(const std::string& line)
+gpsdata UartDevice::parseRmc(const std::string& line)
 {
     gpsdata result;
 

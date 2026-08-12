@@ -16,6 +16,7 @@ UartDevice::UartDevice(const std::string& devicePath)
         throw systemError("Failed to select I2C device");
     }
     
+    configure();
     
 }
 

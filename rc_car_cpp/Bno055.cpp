@@ -6,7 +6,10 @@
 #include <chrono>
 #include <thread>
 
-Bno055::Bno055(I2cDevice& i2c): i2c_(i2c){  }
+Bno055::Bno055(I2cDevice& i2c): i2c_(i2c)
+{  
+    imu.initialize();
+}
     
 
 void Bno055::initialize() { // 시작할 때 한번 진행하는 코드 데이터를 넣어줌

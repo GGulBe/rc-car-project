@@ -60,7 +60,7 @@ def metadata_value(metadata, key):
     return value
 
 
-def draw(frame, boxes, threshold, inference_ms, total_ms, temp):
+def draw(frame, boxes, threshold, inference_ms, total_ms, temp, scenario):
     display = frame.copy()
     scale_x = display.shape[1] / IMAGE_WIDTH
     scale_y = display.shape[0] / IMAGE_HEIGHT
@@ -76,9 +76,9 @@ def draw(frame, boxes, threshold, inference_ms, total_ms, temp):
     fps = 1000.0 / total_ms if total_ms > 0 else 0.0
     temperature_text = "N/A" if temp is None else f"{temp:.1f}C"
     lines = [
-        f"INT8 | people {len(boxes)} | threshold {threshold:.2f}",
+        f"INT8 | people {len(boxes)} | threshold {threshold:.2f} | scene {scenario}",
         f"inference {inference_ms:.1f} ms | loop {fps:.1f} FPS | temp {temperature_text}",
-        "Q quit | [ threshold down | ] threshold up",
+        "Q quit | [ ] threshold | 0 empty 1 near 2 mid 3 far 4 moving 5 multi",
     ]
     for index, text in enumerate(lines):
         cv2.putText(display, text, (10, 24 + index * 24),
@@ -119,7 +119,7 @@ def main():
         session.run(None, {input_name: dummy})
 
     frame_fields = [
-        "timestamp", "frame", "threshold", "detections",
+        "timestamp", "frame", "scenario", "threshold", "detections",
         "capture_ms", "preprocess_ms", "inference_ms", "postprocess_ms",
         "total_ms", "loop_fps", "sensor_to_result_ms",
         "temperature_c", "system_cpu_percent", "process_cpu_percent",
@@ -128,7 +128,7 @@ def main():
         "analogue_gain", "digital_gain", "lux", "colour_temperature",
     ]
     detection_fields = [
-        "timestamp", "frame", "detection", "confidence",
+        "timestamp", "frame", "scenario", "detection", "confidence",
         "model_xmin", "model_ymin", "model_xmax", "model_ymax",
         "camera_xmin", "camera_ymin", "camera_xmax", "camera_ymax",
         "center_x", "center_y", "bottom_center_x", "bottom_center_y",
@@ -143,6 +143,7 @@ def main():
     error_message = None
     stop_reason = "duration_complete"
     threshold = args.threshold
+    scenario = "unlabeled"
     frame_rows = []
     confidences = []
     detection_heights = []
@@ -185,6 +186,7 @@ def main():
 
                 frame_row = {
                     "timestamp": now_text, "frame": frame_number,
+                    "scenario": scenario,
                     "threshold": threshold, "detections": len(boxes),
                     "capture_ms": capture_ms, "preprocess_ms": preprocess_ms,
                     "inference_ms": inference_ms, "postprocess_ms": postprocess_ms,
@@ -222,6 +224,7 @@ def main():
                     detection_heights.append(height)
                     detection_writer.writerow({
                         "timestamp": now_text, "frame": frame_number,
+                        "scenario": scenario,
                         "detection": detection_index, "confidence": confidence,
                         "model_xmin": x1, "model_ymin": y1,
                         "model_xmax": x2, "model_ymax": y2,
@@ -248,7 +251,7 @@ def main():
                     break
 
                 if not args.no_preview:
-                    key = draw(frame, boxes, threshold, inference_ms, total_ms, temp)
+                    key = draw(frame, boxes, threshold, inference_ms, total_ms, temp, scenario)
                     if key == ord("q"):
                         stop_reason = "user_pressed_q"
                         break
@@ -256,6 +259,18 @@ def main():
                         threshold = max(0.05, threshold - 0.05)
                     elif key == ord("]"):
                         threshold = min(0.95, threshold + 0.05)
+                    elif key == ord("0"):
+                        scenario = "empty"
+                    elif key == ord("1"):
+                        scenario = "near"
+                    elif key == ord("2"):
+                        scenario = "middle"
+                    elif key == ord("3"):
+                        scenario = "far"
+                    elif key == ord("4"):
+                        scenario = "moving"
+                    elif key == ord("5"):
+                        scenario = "multiple_people"
     except Exception as error:
         status = "ERROR"
         stop_reason = "exception"
@@ -271,6 +286,17 @@ def main():
         "small_16_32": sum(16 <= h < 32 for h in detection_heights),
         "regular_ge32": sum(h >= 32 for h in detection_heights),
     }
+    scenario_summary = {}
+    for scene in sorted({str(row["scenario"]) for row in frame_rows}):
+        scene_rows = [row for row in frame_rows if row["scenario"] == scene]
+        scenario_summary[scene] = {
+            "frames": len(scene_rows),
+            "frames_with_detections": sum(int(row["detections"]) > 0 for row in scene_rows),
+            "detections": sum(int(row["detections"]) for row in scene_rows),
+            "mean_inference_ms": float(np.mean([
+                float(row["inference_ms"]) for row in scene_rows
+            ])) if scene_rows else None,
+        }
     report = {
         "status": status, "stop_reason": stop_reason, "error": error_message,
         "notice": "Temporary INT8 model; visual test is not ground-truth accuracy evaluation.",
@@ -284,6 +310,7 @@ def main():
         "confidence": summarize(confidences),
         "box_height_model_pixels": summarize(detection_heights),
         "size_counts": size_counts,
+        "scenario_summary": scenario_summary,
         "inference_ms": summarize([float(r["inference_ms"]) for r in frame_rows]),
         "total_ms": summarize([float(r["total_ms"]) for r in frame_rows]),
         "sensor_to_result_ms": summarize([

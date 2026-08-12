@@ -115,11 +115,11 @@ Picamera2 포맷 이름은 메모리의 채널 순서와 직관적으로 반대�
 | 항목 | 값 |
 |---|---:|
 | INT8 카메라 시험 | 600초 |
-| ONNX Runtime CPU thread | 4 |
+| ONNX Runtime CPU thread | 2 |
 | 카메라 요청 크기 | 640×480 |
 | 카메라 요청 FPS | 30 |
 | 모델 입력 | 320×240 |
-| 온도 자동 종료 | 78°C |
+| 온도 자동 종료 | 75°C |
 
 VNC 화면에 사람 박스, confidence, 추론시간, 전체 FPS와 CPU 온도가 표시됩니다. `Q`를 누르면 정상 종료되며 그 시점까지의 결과가 보존됩니다. `[`와 `]` 키로 confidence threshold를 0.05씩 조절할 수 있고 변경된 threshold도 프레임별 CSV에 기록됩니다.
 

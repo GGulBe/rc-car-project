@@ -7,5 +7,5 @@ cd "$(dirname "$0")"
   --duration 600 \
   --threshold 0.20 \
   --nms 0.20 \
-  --threads 4 \
-  --max-temperature 78
+  --threads 2 \
+  --max-temperature 75

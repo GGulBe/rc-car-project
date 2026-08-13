@@ -165,12 +165,13 @@ int main() {
         constexpr int height = 240;
         constexpr int targetFps = 30;
 
-        cv::VideoCapture camera(makePipeline(width, height, targetFps));
-        if (!camera.isOpened()) {
-            std::cerr << "GStreamer camera open failed. Trying V4L2 index 0.\n";
-            camera.open(0, cv::CAP_V4L2);
-        }
-        if (!camera.isOpened()) throw systemError("Failed to open Raspberry Pi camera");
+        // V4L2 방식으로 카메라 열기
+        cv::VideoCapture camera(0, cv::CAP_V4L2);
+        camera.set(cv::CAP_PROP_FRAME_WIDTH, width);
+        camera.set(cv::CAP_PROP_FRAME_HEIGHT, height);
+        camera.set(cv::CAP_PROP_FPS, targetFps);
+
+        if (!camera.isOpened()) throw systemError("Failed to open Raspberry Pi camera via V4L2");
 
         MapManager mapManager("map_3.jpg");
 
@@ -179,7 +180,17 @@ int main() {
         std::vector<cv::Point2f> map_points = getCalibrationPoints(map_image, "Calibration: Click 4 Points on Map");
 
         cv::Mat cam_frame;
-        camera.read(cam_frame);
+        int retry_count = 0;
+        
+        while (retry_count < 10) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            camera.read(cam_frame);
+            if (!cam_frame.empty()) {
+                break;
+            }
+            retry_count++;
+        }
+
         if (cam_frame.empty()) throw std::runtime_error("카메라 프레임을 읽어오지 못했습니다!");
         std::vector<cv::Point2f> video_points = getCalibrationPoints(cam_frame, "Calibration: Click 4 Points on Camera (320x240)");
 
@@ -246,7 +257,7 @@ int main() {
             double current_lat = current_gps.gpsfix ? current_gps.lat : 37.58635; 
             double current_lon = current_gps.gpsfix ? current_gps.lon : 127.09746; 
 
-            // 💡 [추가됨] 카메라 뷰어 화면에 실시간 GPS 좌표 출력
+            // 카메라 뷰어 화면에 실시간 GPS 좌표 출력
             std::ostringstream gpsText;
             gpsText << std::fixed << std::setprecision(5)
                     << "GPS: " << current_lat << ", " << current_lon 

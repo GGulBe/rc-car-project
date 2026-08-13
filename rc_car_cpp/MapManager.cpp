@@ -1,41 +1,38 @@
 #include "MapManager.h"
 
-MapManager::MapManager(double lat_min, double lat_max, double lon_min, double lon_max, const std::string& map_path) {
-    this->lat_min = lat_min;
-    this->lat_max = lat_max;
-    this->lon_min = lon_min;
-    this->lon_max = lon_max;
+MapManager::MapManager(const std::string& map_path) {
     this->satellite_map = cv::imread(map_path);
 }
 
-cv::Point2f MapManager::gpsToPixel(double lat, double lon) {
-    double x_ratio = (lon - lon_min) / (lon_max - lon_min);
-    double y_ratio = (lat_max - lat) / (lat_max - lat_min);
-    
-    float pixel_x = static_cast<float>(x_ratio * satellite_map.cols);
-    float pixel_y = static_cast<float>(y_ratio * satellite_map.rows);
-    
-    return cv::Point2f(pixel_x, pixel_y);
+void MapManager::setHomography(const std::vector<cv::Point2f>& video_pts, const std::vector<cv::Point2f>& map_pts) {
+    // 프로그램 시작 시 1회 캘리브레이션 행렬 계산
+    this->homography_matrix = cv::findHomography(video_pts, map_pts);
 }
 
-cv::Mat MapManager::drawMarkers(double rc_lat, double rc_lon, bool person_detected, float speed) {
+cv::Point2f MapManager::transformToMap(const cv::Point2f& camera_bottom_center) {
+    if (homography_matrix.empty()) return cv::Point2f(-1, -1);
+
+    std::vector<cv::Point2f> src_pts = { camera_bottom_center };
+    std::vector<cv::Point2f> dst_pts;
+    
+    // 호모그래피를 통한 투영 변환
+    cv::perspectiveTransform(src_pts, dst_pts, homography_matrix);
+    return dst_pts[0];
+}
+
+cv::Mat MapManager::drawMarkers(double rc_lat, double rc_lon, bool person_detected, const cv::Point2f& person_map_pos) {
     cv::Mat display_map = satellite_map.clone();
 
-    // RC카 현재 위치 (파란색 점)
-    cv::Point2f rc_pixel = gpsToPixel(rc_lat, rc_lon);
-    cv::circle(display_map, rc_pixel, 8, cv::Scalar(255, 0, 0), -1);
-    cv::putText(display_map, "RC Car", rc_pixel + cv::Point2f(10, 5), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 0, 0), 2);
+    // 1. RC카 현재 위치 출력 (예시 고정 또는 GPS 연동 위치)
+    // cv::Point2f rc_pixel(300, 400); // 픽셀 변환 로직 연동 가능
+    // cv::circle(display_map, rc_pixel, 8, cv::Scalar(255, 0, 0), -1);
+    // cv::putText(display_map, "RC Car", rc_pixel + cv::Point2f(10, 5), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 0, 0), 2);
 
-    // 사람이 감지되었을 때 지도에 빨간색 마커 표시
-    if (person_detected) {
-        cv::Point2f person_pixel = rc_pixel + cv::Point2f(20.0f, -20.0f); // 상대 위치 예시
-        cv::circle(display_map, person_pixel, 10, cv::Scalar(0, 0, 255), -1);
-        cv::putText(display_map, "Person", person_pixel + cv::Point2f(10, 5), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 2);
+    // 2. 사람이 탐지되었을 때만 지도에 마커 표시, 사라지면 미출력
+    if (person_detected && person_map_pos.x >= 0 && person_map_pos.y >= 0) {
+        cv::circle(display_map, person_map_pos, 10, cv::Scalar(0, 0, 255), -1);
+        cv::putText(display_map, "Person", person_map_pos + cv::Point2f(10, 5), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 2);
     }
-
-    // 속력 텍스트 출력 (test)
-    std::string speed_str = "Speed: " + std::to_string(speed) + " m/s";
-    cv::putText(display_map, speed_str, cv::Point(20, 40), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 255), 2);
 
     return display_map;
 }

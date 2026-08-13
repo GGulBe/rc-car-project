@@ -11,7 +11,9 @@
 #include <stdexcept>
 #include <cmath>
 #include <algorithm>
- 
+#include <thread>
+#include <mutex>
+
 #include "MotorController.h"
 #include "PwmController.h"
 #include "ServoController.h"
@@ -34,6 +36,40 @@ constexpr double P2_MAX = -50.0;
 constexpr double CAMERA_STEP = 5.0;
 constexpr double STEERING_STEP = 1.0;
 
+// 멀티스레드 간 안전한 데이터 공유를 위한 뮤텍스 및 공유 변수
+std::mutex g_mtx;
+cv::Mat g_latest_frame;
+bool g_person_detected = false;
+cv::Point2f g_person_map_pos(-1, -1);
+bool g_running = true;
+
+// [스레드 분할 1] 백그라운드 객체 탐지(AI) 전용 스레드
+void aiThread(const std::string& model_path) {
+    Detector detector(model_path, 0.3f);
+    cv::Mat target_frame;
+
+    while (g_running) {
+        {
+            std::lock_guard<std::mutex> lock(g_mtx);
+            if (g_latest_frame.empty()) continue;
+            target_frame = g_latest_frame.clone();
+        }
+
+        cv::Point2f bottom_center;
+        bool detected = detector.detectPerson(target_frame, bottom_center);
+
+        {
+            std::lock_guard<std::mutex> lock(g_mtx);
+            g_person_detected = detected;
+            if (detected) {
+                // 발 위치(bottom-center)를 공유 변수에 임시 저장 (메인 스레드나 맵 매니저에서 호모그래피 변환 처리)
+                g_person_map_pos = bottom_center; 
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20)); // 라즈베리파이 CPU 과부하 방지
+    }
+}
+
 int main() {
     try {
         I2cDevice i2c(0x14);
@@ -49,6 +85,7 @@ int main() {
         servos.setCalibration(1, { P1_MIN, P1_MAX });
         servos.setCalibration(2, { P2_MIN, P2_MAX});
 
+        // 카메라 화각 고정 (Pan/Tilt 값 고정)
         servos.setAngle(0, P0_CENTER);
         servos.setAngle(1, P1_CENTER);
         servos.setAngle(2, P2_CENTER);
@@ -65,9 +102,19 @@ int main() {
         }
         if (!camera.isOpened()) throw systemError("Failed to open Raspberry Pi camera");
 
-        // 위성지도 및 detector 초기화
-        MapManager mapManager(37.58635, 37.58719, 127.09746, 127.09833, "map.jpg");
-        Detector detector("person_detector_int8.onnx", 0.3f); 
+        // 위성지도 관리자 초기화
+        MapManager mapManager("map.jpg");
+
+        // [요구사항 1] 프로그램 동작 시 1회 호모그래피 캘리브레이션 진행 (대응점 4개 매칭 설정)
+        // 실제 주행 환경에 맞춰 영상 속 픽셀 점들과 위성지도 속 픽셀 점들을 매칭해야 합니다.
+        std::vector<cv::Point2f> video_points = { {100, 100}, {500, 100}, {500, 500}, {100, 500} };
+        std::vector<cv::Point2f> map_points   = { {200, 200}, {600, 200}, {600, 600}, {200, 600} };
+        mapManager.setHomography(video_points, map_points);
+        std::cout << "✨ 1회 호모그래피 매트릭스 계산 완료!" << std::endl;
+
+        // [요구사항 2] 객체 탐지 스레드 백그라운드 구동 (라즈베리파이 부하 방지 및 멀티스레드 분할)
+        std::thread detection_thread(aiThread, "person_detector_v2_best_int8.onnx");
+        detection_thread.detach();
 
         double speedSetting = 30.0;
         double driveCommand = 0.0;
@@ -82,14 +129,20 @@ int main() {
 
         TerminalInput keyboard;
         cv::namedWindow("Robot Camera Control", cv::WINDOW_AUTOSIZE);
-        // 위성지도 모니터링 창
+        // [요구사항 3] 위성지도 모니터링 창 및 카메라 창 총 2개 구현
         cv::namedWindow("RC Car Real-time Monitoring", cv::WINDOW_AUTOSIZE);
         
         std::cout << "Keyboard input is read from this terminal. Press W/A/S/D without Enter.\n";
 
-        while (true) {
+        while (g_running) {
             if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
             
+            // 최신 프레임 공유 변수에 전달 (AI 스레드가 가져감)
+            {
+                std::lock_guard<std::mutex> lock(g_mtx);
+                g_latest_frame = frame.clone();
+            }
+
             // FPS 측정용
             frameCounter++;
 
@@ -105,19 +158,31 @@ int main() {
                 fpsStart = now;
             }
             
+            // 창 1: 카메라 뷰어 출력
             cv::Mat display = frame.clone();
             drawStatus(display, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps);
             cv::imshow("Robot Camera Control", display);
 
-            // 딥러닝 추론 및 위성지도 렌더링
-            bool person_detected = detector.detectPerson(frame);
+            // [요구사항 3] 감지 상태 확인 및 위성지도 마커 토글 처리 (사람 탐지 시 출력, 사라지면 미출력)
+            bool person_detected_flag;
+            cv::Point2f raw_bottom_center;
+            {
+                std::lock_guard<std::mutex> lock(g_mtx);
+                person_detected_flag = g_person_detected;
+                raw_bottom_center = g_person_map_pos;
+            }
 
-            float current_speed_ms = static_cast<float>(std::abs(driveCommand)) * 0.1f; // 예시 환산식 (필요시 수정)
+            cv::Point2f transformed_map_pos(-1, -1);
+            if (person_detected_flag) {
+                // 발 위치 픽셀을 호모그래피 매트릭스로 위성지도 픽셀 좌표로 변환
+                transformed_map_pos = mapManager.transformToMap(raw_bottom_center);
+            }
 
-            double current_lat = 37.58680; 
-            double current_lon = 127.09790; 
+            double current_lat = 37.58680; // GPS 위도 (실제 센서 연동 시 대체 가능)
+            double current_lon = 127.09790; // GPS 경도 (실제 센서 연동 시 대체 가능)
 
-            cv::Mat display_map = mapManager.drawMarkers(current_lat, current_lon, person_detected, current_speed_ms);
+            // 창 2: 위성 뷰어 출력 (마커 생성 및 소멸 반영)
+            cv::Mat display_map = mapManager.drawMarkers(current_lat, current_lon, person_detected_flag, transformed_map_pos);
             cv::imshow("RC Car Real-time Monitoring", display_map);
 
             const int windowKey = cv::waitKey(1);
@@ -125,6 +190,7 @@ int main() {
             if (key < 0 && windowKey >= 0) key = windowKey & 0xFF;
             if (key < 0) continue;
 
+            // 기존 키보드 제어 로직 (WASD 등) 유지
             if (key == 'w' || key == 'W') {
                 driveCommand = speedSetting;
                 motors.drive(driveCommand);
@@ -201,10 +267,12 @@ int main() {
                 servos.setAngle(2, steeringAngle);
             }
             else if (key == 'q' || key == 'Q' || key == 27) {
+                g_running = false;
                 break;
             }
         }
 
+        g_running = false;
         motors.stop();
         servos.setAngle(2, P2_CENTER);
         camera.release();

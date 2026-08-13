@@ -1,18 +1,21 @@
 #pragma once
-
 #include <opencv2/opencv.hpp>
+#include <string>
 
 class MapManager {
 private:
-    double lat_min, lat_max, lon_min, lon_max;
     cv::Mat satellite_map;
+    cv::Mat homography_matrix; // 호모그래피 행렬 H
 
 public:
-    MapManager(double lat_min, double lat_max, double lon_min, double lon_max, const std::string& map_path);
+    MapManager(const std::string& map_path);
     
-    // 위경도를 픽셀 좌표로 변환하는 함수
-    cv::Point2f gpsToPixel(double lat, double lon);
+    // 1회 캘리브레이션용 호모그래피 행렬 설정
+    void setHomography(const std::vector<cv::Point2f>& video_pts, const std::vector<cv::Point2f>& map_pts);
     
-    // 지도 위에 RC카와 사람 마커를 그려주는 함수
-    cv::Mat drawMarkers(double rc_lat, double rc_lon, bool person_detected, float speed);
+    // 카메라 픽셀(발 위치)을 위성지도 픽셀로 변환
+    cv::Point2f transformToMap(const cv::Point2f& camera_bottom_center);
+    
+    // 지도 시각화 렌더링 함수
+    cv::Mat drawMarkers(double rc_lat, double rc_lon, bool person_detected, const cv::Point2f& person_map_pos);
 };

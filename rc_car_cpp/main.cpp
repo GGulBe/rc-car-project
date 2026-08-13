@@ -92,8 +92,9 @@ int main() {
             //std::string rmsline = gps.readRmc();
             UartDevice::gpsdata gpsdata = {}; //gps.parseRmc(rmsline);
             Bno055::Tilt tilt = imu.readMotion();
-            cv::Mat display = frame.clone();
             cv::VideoCapture camera(makePipeline(width, height, targetFps, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps, tilt, gpsdata));
+            cv::Mat display = frame.clone();
+            
             cv::imshow("Robot Camera Control", display);
 
             const int windowKey = cv::waitKey(1);

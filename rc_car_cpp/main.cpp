@@ -41,8 +41,8 @@ int main() {
         MotorController motors(pwm);
         Bno055 imu(bno055I2c);
         UartDevice gps;
-
-
+        TerminalInput keyboard;
+        
         servos.setCalibration(0, { P0_MIN, P0_MAX});
         servos.setCalibration(1, { P1_MIN, P1_MAX });
         servos.setCalibration(2, { P2_MIN, P2_MAX});
@@ -52,11 +52,12 @@ int main() {
         servos.setAngle(2, P2_CENTER);
         motors.stop();
 
+        //카메라 해상도와 FPS 설정
         constexpr int width = 320;
         constexpr int height = 240;
         constexpr int targetFps = 30;
-
-        
+        //카메라 객체 생성
+        cv::VideoCapture camera(makePipeline(width, height, targetFps),cv::CAP_GSTREAMER);
         if (!camera.isOpened()) {
             std::cerr << "GStreamer camera open failed. Trying V4L2 index 0.\n";
             camera.open(0, cv::CAP_V4L2);
@@ -69,17 +70,19 @@ int main() {
         double cameraPan = P0_CENTER;
         double cameraTilt = P1_CENTER;
 
+       
         cv::Mat frame;
         int frameCounter = 0;
         double measuredFps = 0.0;
         auto fpsStart = std::chrono::steady_clock::now();
-
-        TerminalInput keyboard;
+        if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
+        
+        
         cv::namedWindow("Robot Camera Control", cv::WINDOW_AUTOSIZE);
         std::cout << "Keyboard input is read from this terminal. Press W/A/S/D without Enter.\n";
 
         while (true) {
-            if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
+            
             ++frameCounter;
             const auto now = std::chrono::steady_clock::now();
             const double elapsed = std::chrono::duration<double>(now - fpsStart).count();
@@ -92,7 +95,56 @@ int main() {
             //std::string rmsline = gps.readRmc();
             UartDevice::gpsdata gpsdata = {}; //gps.parseRmc(rmsline);
             Bno055::Tilt tilt = imu.readMotion();
-            cv::VideoCapture camera(makePipeline(width, height, targetFps, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps, tilt, gpsdata));
+            cv::Mat display(
+    frame.rows + infoHeight,
+    frame.cols,
+    frame.type(),
+    cv::Scalar(255, 255, 255)   // 흰 배경
+);
+
+// 카메라는 아래쪽에 복사
+frame.copyTo(
+    display(
+        cv::Rect(
+            0,
+            infoHeight,
+            frame.cols,
+            frame.rows
+        )
+    )
+);
+
+// 위쪽 흰 공간에 정보 출력
+cv::putText(
+    display,
+    "GPS: 37.12345, 127.12345",
+    cv::Point(10, 25),
+    cv::FONT_HERSHEY_SIMPLEX,
+    0.45,
+    cv::Scalar(0, 0, 0),
+    1
+);
+
+cv::putText(
+    display,
+    "Speed: 1.2 m/s",
+    cv::Point(10, 50),
+    cv::FONT_HERSHEY_SIMPLEX,
+    0.45,
+    cv::Scalar(0, 0, 0),
+    1
+);
+
+cv::putText(
+    display,
+    "FPS: 28.5",
+    cv::Point(10, 75),
+    cv::FONT_HERSHEY_SIMPLEX,
+    0.45,
+    cv::Scalar(0, 0, 0),
+    1
+);
+
             cv::Mat display = frame.clone();
             
             cv::imshow("Robot Camera Control", display);

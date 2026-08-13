@@ -56,6 +56,7 @@ int main() {
         constexpr int width = 320;
         constexpr int height = 240;
         constexpr int targetFps = 30;
+        constexpr int infoHeight = 90;
         //카메라 객체 생성
         cv::VideoCapture camera(makePipeline(width, height, targetFps),cv::CAP_GSTREAMER);
         if (!camera.isOpened()) {
@@ -75,14 +76,12 @@ int main() {
         int frameCounter = 0;
         double measuredFps = 0.0;
         auto fpsStart = std::chrono::steady_clock::now();
-        if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
-        
         
         cv::namedWindow("Robot Camera Control", cv::WINDOW_AUTOSIZE);
         std::cout << "Keyboard input is read from this terminal. Press W/A/S/D without Enter.\n";
 
         while (true) {
-            
+            if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
             ++frameCounter;
             const auto now = std::chrono::steady_clock::now();
             const double elapsed = std::chrono::duration<double>(now - fpsStart).count();
@@ -95,58 +94,58 @@ int main() {
             //std::string rmsline = gps.readRmc();
             UartDevice::gpsdata gpsdata = {}; //gps.parseRmc(rmsline);
             Bno055::Tilt tilt = imu.readMotion();
-            cv::Mat display(
-    frame.rows + infoHeight,
-    frame.cols,
-    frame.type(),
-    cv::Scalar(255, 255, 255)   // 흰 배경
-);
-
-// 카메라는 아래쪽에 복사
-frame.copyTo(
-    display(
-        cv::Rect(
-            0,
-            infoHeight,
-            frame.cols,
-            frame.rows
-        )
-    )
-);
-
-// 위쪽 흰 공간에 정보 출력
-cv::putText(
-    display,
-    "GPS: 37.12345, 127.12345",
-    cv::Point(10, 25),
-    cv::FONT_HERSHEY_SIMPLEX,
-    0.45,
-    cv::Scalar(0, 0, 0),
-    1
-);
-
-cv::putText(
-    display,
-    "Speed: 1.2 m/s",
-    cv::Point(10, 50),
-    cv::FONT_HERSHEY_SIMPLEX,
-    0.45,
-    cv::Scalar(0, 0, 0),
-    1
-);
-
-cv::putText(
-    display,
-    "FPS: 28.5",
-    cv::Point(10, 75),
-    cv::FONT_HERSHEY_SIMPLEX,
-    0.45,
-    cv::Scalar(0, 0, 0),
-    1
-);
-
-            cv::Mat display = frame.clone();
             
+            cv::Mat display(
+            frame.rows + infoHeight,
+            frame.cols,
+            frame.type(),
+            cv::Scalar(255, 255, 255)
+            );
+            frame.copyTo(
+        display(
+            cv::Rect(
+                0,
+                infoHeight,
+                frame.cols,
+                frame.rows
+            )
+        )
+    );
+    cv::putText(
+        display,
+        "GPS: 37.12345, 127.12345",
+        cv::Point(10, 20),
+        cv::FONT_HERSHEY_SIMPLEX,
+        0.4,
+        cv::Scalar(0, 0, 0),
+        1
+    );
+
+
+    cv::putText(
+        display,
+        "Speed: " + std::to_string(driveCommand),
+        cv::Point(10, 45),
+        cv::FONT_HERSHEY_SIMPLEX,
+        0.4,
+        cv::Scalar(0, 0, 0),
+        1
+    );
+ std::ostringstream fpsText;
+    fpsText << std::fixed
+            << std::setprecision(1)
+            << "FPS: "
+            << measuredFps;
+
+    cv::putText(
+        display,
+        fpsText.str(),
+        cv::Point(10, 70),
+        cv::FONT_HERSHEY_SIMPLEX,
+        0.4,
+        cv::Scalar(0, 0, 0),
+        1
+    );
             cv::imshow("Robot Camera Control", display);
 
             const int windowKey = cv::waitKey(1);

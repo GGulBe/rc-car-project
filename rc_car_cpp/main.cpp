@@ -91,15 +91,9 @@ int main() {
 
             std::string rmsline = gps.readRmc();
             UartDevice::gpsdata gpsdata = gps.parseRmc(rmsline);
-            std::ostringstream gpsline;
-            gpsline << std::cout << "gpsfix : " << gpsdata.gpsfix << " 위도 : " << gpsdata.lat <<  " 경도 : " << gpsdata.lon << " UTC : " << gpsdata.utc << " date : " << gpsdata.date;
-
             Bno055::Tilt tilt = imu.readMotion();
-            std::ostringstream imuline;
-            imuline << std::cout << "heading : " << tilt.headingDeg << " roll : " << tilt.rollDeg << " pitch : " << tilt.pitchDeg;
-
             cv::Mat display = frame.clone();
-            drawStatus(display, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps, imuline, gpsline);
+            drawStatus(display, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps, tilt, gps);
             cv::imshow("Robot Camera Control", display);
 
             const int windowKey = cv::waitKey(1);

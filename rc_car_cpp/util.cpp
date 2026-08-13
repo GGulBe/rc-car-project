@@ -32,15 +32,19 @@ std::string makePhotoFilename() {
     return name.str();
 }
 
-void drawStatus(cv::Mat& frame, double speedSetting, double driveCommand, double steeringAngle, double cameraPan, double cameraTilt, double fps, std::ostringstream& imuline, std::ostringstream& gpsline) {
+void drawStatus(cv::Mat& frame, double speedSetting, double driveCommand, double steeringAngle, double cameraPan, double cameraTilt, double fps,Bno055::Tilt tilt, UartDevice::gpsdata gpsdata) {
     std::ostringstream line1;
     line1 << std::fixed << std::setprecision(1) << "FPS " << fps << "  Speed " << speedSetting << "%  Drive " << driveCommand << "%";
     std::ostringstream line2;
     line2 << "P2 steer " << steeringAngle << "  P0 pan " << cameraPan << "  P1 tilt " << cameraTilt;
+    std::ostringstream line3;
+    line3 << "gpsfix : " << gpsdata.gpsfix << " 위도 : " << gpsdata.lat <<  " 경도 : " << gpsdata.lon << " UTC : " << gpsdata.utc << " date : " << gpsdata.date;
+    std::ostringstream line4;
+    line4 << "heading : " << tilt.headingDeg << " roll : " << tilt.rollDeg << " pitch : " << tilt.pitchDeg;
     cv::putText(frame, line1.str(), cv::Point(15, 30), cv::FONT_HERSHEY_SIMPLEX, 0.65, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
     cv::putText(frame, line2.str(), cv::Point(15, 60), cv::FONT_HERSHEY_SIMPLEX, 0.60, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);;
-    cv::putText(frame, imuline.str(), cv::Point(15, 90), cv::FONT_HERSHEY_SIMPLEX, 0.65, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
-    cv::putText(frame, gpsline.str(), cv::Point(15, 120),cv::FONT_HERSHEY_SIMPLEX, 0.65, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
+    cv::putText(frame, line3.str(), cv::Point(15, 90), cv::FONT_HERSHEY_SIMPLEX, 0.65, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
+    cv::putText(frame, line4.str(), cv::Point(15, 120),cv::FONT_HERSHEY_SIMPLEX, 0.65, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
    
     
 }

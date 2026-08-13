@@ -161,7 +161,6 @@ int main() {
         servos.setAngle(2, P2_CENTER);
         motors.stop();
 
-        // 카메라 해상도를 요구하신 320x240으로 설정
         constexpr int width = 320;
         constexpr int height = 240;
         constexpr int targetFps = 30;
@@ -175,12 +174,10 @@ int main() {
 
         MapManager mapManager("map_3.jpg");
 
-        // 위성 지도 마우스 캘리브레이션 (552x662 기준)
         cv::Mat map_image = cv::imread("map_3.jpg");
         if (map_image.empty()) throw std::runtime_error("map_3.jpg 이미지 파일을 찾을 수 없습니다!");
         std::vector<cv::Point2f> map_points = getCalibrationPoints(map_image, "Calibration: Click 4 Points on Map");
 
-        // 카메라 화면 마우스 캘리브레이션 (320x240 기준)
         cv::Mat cam_frame;
         camera.read(cam_frame);
         if (cam_frame.empty()) throw std::runtime_error("카메라 프레임을 읽어오지 못했습니다!");
@@ -235,7 +232,6 @@ int main() {
             
             cv::Mat display = frame.clone();
             drawStatus(display, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps);
-            cv::imshow("Robot Camera Control", display);
 
             bool current_detected;
             cv::Point2f current_map_pos;
@@ -249,6 +245,24 @@ int main() {
 
             double current_lat = current_gps.gpsfix ? current_gps.lat : 37.58635; 
             double current_lon = current_gps.gpsfix ? current_gps.lon : 127.09746; 
+
+            // 💡 [추가됨] 카메라 뷰어 화면에 실시간 GPS 좌표 출력
+            std::ostringstream gpsText;
+            gpsText << std::fixed << std::setprecision(5)
+                    << "GPS: " << current_lat << ", " << current_lon 
+                    << (current_gps.gpsfix ? " (FIX)" : " (NO FIX)");
+
+            cv::putText(
+                display,
+                gpsText.str(),
+                cv::Point(10, 20),          // 출력 위치 (좌측 상단)
+                cv::FONT_HERSHEY_SIMPLEX,
+                0.4,                        // 폰트 크기
+                cv::Scalar(0, 255, 0),      // 초록색 글씨
+                1                           // 두께
+            );
+
+            cv::imshow("Robot Camera Control", display);
 
             cv::Mat display_map = mapManager.drawMarkers(current_lat, current_lon, current_detected, current_map_pos);
             cv::imshow("RC Car Real-time Monitoring", display_map);

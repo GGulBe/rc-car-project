@@ -80,7 +80,7 @@ int main() {
 
         while (true) {
             if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
-
+            ++frameCounter;
             const auto now = std::chrono::steady_clock::now();
             const double elapsed = std::chrono::duration<double>(now - fpsStart).count();
             if (elapsed >= 1.0) {
@@ -88,9 +88,18 @@ int main() {
                 frameCounter = 0;
                 fpsStart = now;
             }
-            
+
+            std::string rmsline = gps.readRmc();
+            UartDevice::gpsdata gpsdata = gps.parseRmc(rmsline);
+            std::ostringstream gpsline;
+            gpsline << std::cout << "gpsfix : " << gpsdata.gpsfix << " 위도 : " << gpsdata.lat <<  " 경도 : " << gpsdata.lon << " UTC : " << gpsdata.utc << " date : " << gpsdata.date;
+
+            Bno055::Tilt tilt = imu.readMotion();
+            std::ostringstream imuline;
+            imuline << std::cout << "heading : " << tilt.headingDeg << " roll : " << tilt.rollDeg << " pitch : " << tilt.pitchDeg;
+
             cv::Mat display = frame.clone();
-            drawStatus(display, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps);
+            drawStatus(display, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps, imuline, gpsline);
             cv::imshow("Robot Camera Control", display);
 
             const int windowKey = cv::waitKey(1);
@@ -158,11 +167,6 @@ int main() {
                     motors.drive(driveCommand);
                 }
             }
-            else if (key == 'p' || key == 'P') {
-                const std::string filename = makePhotoFilename();
-                if (cv::imwrite(filename, frame)) std::cout << "Saved: " << filename << '\n';
-                else std::cerr << "Failed to save image\n";
-            }
             else if (key == 'r' || key == 'R') {
                 driveCommand = 0.0;
                 steeringAngle = P2_CENTER;
@@ -172,12 +176,6 @@ int main() {
                 servos.setAngle(0, cameraPan);
                 servos.setAngle(1, cameraTilt);
                 servos.setAngle(2, steeringAngle);
-            }
-            else if (key == 'g')
-            {
-                std::string rmsline = gps.readRmc();
-                UartDevice::gpsdata gpsdata = gps.parseRmc(rmsline);
-                std::cout << "gpsfix : " << gpsdata.gpsfix << "lat : " << gpsdata.lat <<  "lon : " << gpsdata.lon << "UTC : " << gpsdata.utc << "date : " << gpsdata.date << std::endl;
             }
             else if (key == 'q' || key == 'Q' || key == 27) {
                 break;
@@ -192,10 +190,6 @@ int main() {
     }
     catch (const cv::Exception& error) {
         std::cerr << "OpenCV error: " << error.what() << '\n';
-        return 1;
-    }
-    catch (const std::exception& error) {
-        std::cerr << "Error: " << error.what() << '\n';
         return 1;
     }
 }

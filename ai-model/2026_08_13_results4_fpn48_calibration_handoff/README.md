@@ -6,6 +6,8 @@
 
 이 폴더는 1차 병렬 실험 6개 중 가장 좋은 결과를 낸 `results.4`의 최고 checkpoint와, 그 checkpoint를 생성한 학습 코드·설정을 별도로 정리한 전달본입니다.
 
+직접 이어서 학습할 팀원은 먼저 [`README_CONTINUE_TRAINING_KO.md`](README_CONTINUE_TRAINING_KO.md)를 확인하세요. 환경 준비, 데이터 경로, epoch 49 재개 명령, 결과 회수 방법을 순서대로 정리했습니다.
+
 ## 핵심 주의사항
 
 - 이 모델은 **학습 중간 후보 모델**이며 최종 배포 모델이 아닙니다.
@@ -58,6 +60,7 @@ Validation에서 F1을 가장 높인 threshold는 약 `0.282715`였고 그때의
 ```text
 results4_fpn48_calibration_handoff/
 ├─ README.md
+├─ README_CONTINUE_TRAINING_KO.md
 ├─ SHA256SUMS.txt
 ├─ model/
 │  ├─ results4_fpn48_best.pt

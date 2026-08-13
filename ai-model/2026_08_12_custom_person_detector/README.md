@@ -165,3 +165,10 @@ MX570 A 4GB, 전체 Train/Valid 데이터, AMP, batch 4 기준입니다.
 - Python/Jupyter 캐시
 
 데이터와 대용량 산출물은 Git 또는 별도 스토리지 정책이 정해진 뒤 관리합니다.
+
+## 실험 기록
+
+- [2026-08-13: 6대 노트북 1차 병렬 학습 분석 및 2차 실험 설계](docs/experiments/2026-08-13_round1/README.md)
+  - 공통 48 epoch 및 최고 checkpoint 비교
+  - 중단 원인과 AMP gradient overflow 해석
+  - FPN48 중심의 2차 6대 병렬 실험 설계와 시작 상태

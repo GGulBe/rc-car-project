@@ -60,7 +60,8 @@ results4_fpn48_calibration_handoff/
 ├─ README.md
 ├─ SHA256SUMS.txt
 ├─ model/
-│  └─ results4_fpn48_best.pt
+│  ├─ results4_fpn48_best.pt
+│  └─ results4_fpn48_last.pt
 ├─ results/
 │  ├─ config.json
 │  ├─ device.json
@@ -72,7 +73,8 @@ results4_fpn48_calibration_handoff/
    ├─ configs/
    │  └─ school2_lightweight_100e.json
    ├─ scripts/
-   │  └─ 16_train.py
+   │  ├─ 16_train.py
+   │  └─ resume_results4.py
    └─ src/rc_detector/
       ├─ backbone.py
       ├─ fpn.py
@@ -121,7 +123,20 @@ print("best mAP50:95:", checkpoint["best_map50_95"])
 print("input:", config["image_width"], config["image_height"])
 ```
 
-## 학습 재현 조건
+## 이어서 학습하기
+
+학습 코드는 전부 포함되어 있습니다. 두 checkpoint의 목적은 다릅니다.
+
+| 파일 | 저장 epoch | 용도 |
+|---|---:|---|
+| `results4_fpn48_last.pt` | 48 | **권장:** 기존 실행을 정확히 이어서 epoch 49부터 학습 |
+| `results4_fpn48_best.pt` | 37 | 최고 mAP 지점에서 별도 분기해 epoch 38부터 다시 학습 |
+
+두 파일 모두 모델 가중치뿐 아니라 optimizer, learning-rate scheduler, AMP GradScaler 상태를 포함합니다.
+
+### 1. 데이터 준비
+
+GitHub에는 데이터셋이 포함되지 않습니다. 학습할 컴퓨터에 기존 `v1_grouped`를 별도로 복사하고 아래 구조가 되게 합니다.
 
 학습 코드만으로는 재학습할 수 없으며 원본 프로젝트와 같은 group-aware 데이터셋이 다음 경로에 필요합니다.
 
@@ -133,14 +148,46 @@ data/processed/v1_grouped/
 └─ valid/labels
 ```
 
-전체 프로젝트 구조로 배치했을 때 실행 명령은 다음과 같습니다.
+`--data-root`에는 위 `data` 폴더를 포함하는 프로젝트 루트를 지정합니다.
+
+### 2. 환경 설치
+
+Anaconda Prompt에서 이 전달 폴더의 `training_code`로 이동한 뒤 설치합니다.
 
 ```powershell
+conda activate rc-person-detector
+cd /d C:\경로\2026_08_13_results4_fpn48_calibration_handoff\training_code
 python -m pip install -e .
-python scripts\16_train.py --config configs\experiments\school2_lightweight_100e.json
 ```
 
-데이터셋은 크기와 라이선스·중복 문제 때문에 이 전달 폴더와 GitHub에 포함하지 않습니다.
+### 3. epoch 49부터 정확히 재개 — 권장
+
+```powershell
+python scripts\resume_results4.py --data-root "C:\경로\rc_person_detector" --checkpoint last
+```
+
+원래 총 epoch가 100이므로 epoch 49부터 100까지 진행합니다. 결과는 다음에 생성됩니다.
+
+```text
+C:\경로\rc_person_detector\results\training\results4_fpn48_continued_from_epoch48\
+```
+
+### 4. 최고 모델에서 별도 분기 — 선택
+
+```powershell
+python scripts\resume_results4.py --data-root "C:\경로\rc_person_detector" --checkpoint best
+```
+
+이 명령은 epoch 37의 최고 checkpoint를 불러와 epoch 38부터 다시 진행합니다. 정확한 기존 실행의 연속이 필요하면 이 명령이 아니라 `--checkpoint last`를 사용해야 합니다.
+
+### 5. 실행 전 확인
+
+```powershell
+python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+python scripts\resume_results4.py --help
+```
+
+데이터셋은 크기와 라이선스·중복 문제 때문에 이 전달 폴더와 GitHub에 포함하지 않습니다. 다른 데이터로 이어서 학습하면 기존 grouped Valid 결과와 직접 비교할 수 없으며, 라벨 규약도 YOLO 단일 `person` 클래스와 동일해야 합니다.
 
 ## 캘리브레이션 팀이 참고할 출력 규약
 

@@ -48,7 +48,7 @@ int main() {
         servos.setCalibration(2, { P2_MIN, P2_MAX});
 
         servos.setAngle(0, P0_CENTER);
-        servos.setAngle(1, P1_CENTER);
+       servos.setAngle(1, P1_CENTER);
         servos.setAngle(2, P2_CENTER);
         motors.stop();
 

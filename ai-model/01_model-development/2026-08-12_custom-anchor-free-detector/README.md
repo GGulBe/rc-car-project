@@ -2,7 +2,7 @@
 
 RC카의 제한된 연산 자원에서 실시간 사람 감지를 수행하기 위해 처음부터 설계한 경량 객체 탐지 모델입니다. YOLO 모델을 사용하는 프로젝트가 아니며, 데이터 라벨 저장 형식만 YOLO 형식(`class cx cy w h`)을 사용합니다.
 
-> 캘리브레이션 팀과 라이브 영상 연동을 위한 입력·출력 규약과 확인 사항은 [`CALIBRATION_TEAM_INTEGRATION_GUIDE.md`](CALIBRATION_TEAM_INTEGRATION_GUIDE.md)를 참고하세요.
+> 캘리브레이션 팀과 라이브 영상 연동을 위한 입력·출력 규약과 확인 사항은 [`04_team-integration/2026-08-12_calibration-interface-guide`](../../04_team-integration/2026-08-12_calibration-interface-guide/)를 참고하세요.
 
 ## 현재 상태
 
@@ -10,10 +10,12 @@ RC카의 제한된 연산 자원에서 실시간 사람 감지를 수행하기 �
 - 커스텀 모델·손실·추론·평가 구현: 완료
 - CPU/CUDA 단위 테스트와 mini-overfit: 통과
 - NVIDIA GeForce MX570 A(4GB) 전체 데이터 2-epoch pilot: 통과
-- 100-epoch 기준 모델 및 5개 비교 실험: 진행 예정
+- 100-epoch 기준 모델 및 5개 비교 실험: 1차 분석 완료
+- 1차 종합 1위: FPN48 `results.4`, best mAP50:95 `0.2525`
+- 2차 병렬 실험: 2026-08-13 시작, 결과 회수 예정
 - Test split 최종 평가는 모델 선택이 끝날 때까지 보류
 
-이 폴더에는 소스 코드와 재현 설정만 포함합니다. 데이터셋, 학습 결과, 체크포인트와 개인 PC 경로는 포함하지 않습니다.
+이 폴더에는 소스 코드와 재현 설정만 포함합니다. 데이터셋, 학습 결과, 체크포인트와 개인 PC 경로는 포함하지 않습니다. 1차 비교 결과는 [`02_training-experiments`](../../02_training-experiments/2026-08-13_round1-six-laptop-study/)에, 현재 최고 checkpoint 전달본은 [`04_team-integration`](../../04_team-integration/2026-08-13_results4-training-handoff/)에 있습니다.
 
 ## 모델 구조
 
@@ -168,7 +170,7 @@ MX570 A 4GB, 전체 Train/Valid 데이터, AMP, batch 4 기준입니다.
 
 ## 실험 기록
 
-- [2026-08-13: 6대 노트북 1차 병렬 학습 분석 및 2차 실험 설계](docs/experiments/2026-08-13_round1/README.md)
+- [2026-08-13: 6대 노트북 1차 병렬 학습 분석 및 2차 실험 설계](../../02_training-experiments/2026-08-13_round1-six-laptop-study/README.md)
   - 공통 48 epoch 및 최고 checkpoint 비교
   - 중단 원인과 AMP gradient overflow 해석
   - FPN48 중심의 2차 6대 병렬 실험 설계와 시작 상태

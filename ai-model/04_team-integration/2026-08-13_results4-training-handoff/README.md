@@ -58,7 +58,7 @@ Validation에서 F1을 가장 높인 threshold는 약 `0.282715`였고 그때의
 ## 폴더 구성
 
 ```text
-results4_fpn48_calibration_handoff/
+2026-08-13_results4-training-handoff/
 ├─ README.md
 ├─ README_CONTINUE_TRAINING_KO.md
 ├─ SHA256SUMS.txt
@@ -159,7 +159,7 @@ Anaconda Prompt에서 이 전달 폴더의 `training_code`로 이동한 뒤 설�
 
 ```powershell
 conda activate rc-person-detector
-cd /d C:\경로\2026_08_13_results4_fpn48_calibration_handoff\training_code
+cd /d C:\경로\2026-08-13_results4-training-handoff\training_code
 python -m pip install -e .
 ```
 

@@ -1,4 +1,6 @@
-# Person Detector v2 INT8 ONNX
+# Person Detector v2 INT8 ONNX — Legacy
+
+> 이 폴더는 2026-08-07 초기 v2 모델 변환 이력입니다. 현재 Raspberry Pi 시험은 상위 폴더의 `2026-08-13_results4-pi-model-variants`를 사용하세요.
 
 ## Description
 

@@ -50,7 +50,7 @@ model/results4_fpn48_best.pt
 GitHub 전달 폴더에는 다음 항목이 포함돼 있습니다.
 
 ```text
-2026_08_13_results4_fpn48_calibration_handoff/
+2026-08-13_results4-training-handoff/
 ├─ model/
 │  ├─ results4_fpn48_best.pt
 │  └─ results4_fpn48_last.pt
@@ -106,7 +106,7 @@ gpu: NVIDIA GeForce MX570 A
 전달 폴더의 학습 코드로 이동하고 설치합니다.
 
 ```powershell
-cd /d C:\경로\2026_08_13_results4_fpn48_calibration_handoff\training_code
+cd /d C:\경로\2026-08-13_results4-training-handoff\training_code
 python -m pip install -e .
 ```
 

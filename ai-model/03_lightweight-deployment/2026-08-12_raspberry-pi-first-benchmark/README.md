@@ -24,7 +24,7 @@ RC-Car Person Detection 모델을 Raspberry Pi 4B CPU에서 실제 카메라와 
 | `requirements-pi.txt` | Python 패키지 목록 |
 | `.gitignore` | 가상환경과 측정 결과 제외 |
 
-모델 파일은 저장소의 `2026_08_12_calibration_handoff` 폴더에 있습니다.
+이 시험에서 사용한 임시 모델은 같은 상위 파트의 `2026-08-12_preliminary-calibration-handoff`에 있습니다. 현재 배포 후보는 `2026-08-13_results4-pi-model-variants`를 사용하세요.
 
 - `person_detector_fp32.onnx`
 - `person_detector_int8.onnx`
@@ -32,7 +32,7 @@ RC-Car Person Detection 모델을 Raspberry Pi 4B CPU에서 실제 카메라와 
 실행 전 두 모델을 이 README와 같은 폴더로 복사해야 합니다.
 
 ```text
-2026_08_12_raspberry_pi_benchmark/
+2026-08-12_raspberry-pi-first-benchmark/
 ├── person_detector_fp32.onnx
 ├── person_detector_int8.onnx
 ├── pi_first_benchmark.py
@@ -74,7 +74,7 @@ Shape : [1, 5, 15, 20]
 Raspberry Pi 터미널에서 이 폴더로 이동합니다.
 
 ```bash
-cd /복사한/경로/2026_08_12_raspberry_pi_benchmark
+cd /복사한/경로/2026-08-12_raspberry-pi-first-benchmark
 ```
 
 최초 한 번만 다음을 실행합니다.

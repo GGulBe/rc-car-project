@@ -1,4 +1,6 @@
-# 2026-08-12 Calibration Handoff
+# 2026-08-12 Calibration Handoff — Preliminary/Legacy
+
+> 최종 모델 전 팀 간 ONNX 연결을 확인하기 위해 사용한 임시 전달본입니다. 현재 배포 후보는 같은 상위 파트의 `2026-08-13_results4-pi-model-variants`를 사용하세요.
 
 ## 1. 목적
 

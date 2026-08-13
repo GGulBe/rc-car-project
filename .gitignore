@@ -1,0 +1,13 @@
+# Operating-system metadata
+.DS_Store
+
+# Local editor and Python caches
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Local environments and secrets
+.venv/
+venv/
+.env

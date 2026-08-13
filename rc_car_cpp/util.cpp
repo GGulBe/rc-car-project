@@ -32,7 +32,7 @@ std::string makePhotoFilename() {
     return name.str();
 }
 
-void drawStatus(cv::Mat& frame, double speedSetting, double driveCommand, double steeringAngle, double cameraPan, double cameraTilt, double fps, std::ostringstream imuline, std::ostringstream gpsline) {
+void drawStatus(cv::Mat& frame, double speedSetting, double driveCommand, double steeringAngle, double cameraPan, double cameraTilt, double fps, std::ostringstream& imuline, std::ostringstream& gpsline) {
     std::ostringstream line1;
     line1 << std::fixed << std::setprecision(1) << "FPS " << fps << "  Speed " << speedSetting << "%  Drive " << driveCommand << "%";
     std::ostringstream line2;

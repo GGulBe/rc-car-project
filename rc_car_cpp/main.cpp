@@ -23,7 +23,7 @@
 #include "util.h"
 #include "Bno055.h"
 #include "UartDevice.h"
-#include "GpsWorker.h"
+#include "GPSWorker.h"
 
 constexpr double P0_CENTER = -80.0;
 constexpr double P1_CENTER = 0.0;

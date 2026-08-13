@@ -61,7 +61,7 @@ cv::Mat makeDisplay(const cv::Mat& frame, double measuredFps, const Bno055::Tilt
     cv::putText(display, motorLine.str(), cv::Point(10, 100), cv::FONT_HERSHEY_SIMPLEX, 0.35, cv::Scalar(0, 0, 0), 1);
 
     std::ostringstream servoLine;
-    servoLine << std::fixed << std::setprecision(1) << "Steering : " << steeringAngle << " Pan : " << cameraPan << " Tilt : " << cameraTilt;
+    servoLine << std::fixed << std::setprecision(1) << "Steering : " << steeringAngle;
     cv::putText(display, servoLine.str(), cv::Point(10, 120), cv::FONT_HERSHEY_SIMPLEX, 0.35, cv::Scalar(0, 0, 0), 1);
 
     return display;

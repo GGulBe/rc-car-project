@@ -21,6 +21,7 @@
 #include "I2CDevice.h"
 #include "util.h"
 #include "Bno055.h"
+#include "UartDevice.h"
 #include "MapManager.h"
 #include "Detector.h"
 
@@ -41,10 +42,10 @@ std::mutex g_mtx;
 cv::Mat g_latest_frame;
 bool g_person_detected = false;
 cv::Point2f g_person_map_pos(-1, -1);
+UartDevice::gpsdata g_latest_gps{}; // 실시간 GPS 공유 데이터
 bool g_running = true;
 
-// [스레드 분할] 객체 탐지 및 좌표 변환 전용 백그라운드 스레드
-// (AI 추론뿐만 아니라 호모그래피 좌표 변환까지 스레드로 빼내어 메인 제어 루프의 부하를 최소화)
+// [스레드 분할 1] 객체 탐지 및 호모그래피 좌표 변환 전용 백그라운드 스레드
 void aiAndTransformThread(const std::string& model_path, MapManager& mapManager) {
     Detector detector(model_path, 0.3f);
     cv::Mat target_frame;
@@ -73,6 +74,24 @@ void aiAndTransformThread(const std::string& model_path, MapManager& mapManager)
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(20)); // RPi4 CPU 부하 방지
+    }
+}
+
+// [스레드 분할 2] GPS 센서 데이터 수신 전용 백그라운드 스레드 (시리얼 블로킹 방지)
+void gpsReadThread() {
+    try {
+        UartDevice gps;
+        while (g_running) {
+            std::string rmsline = gps.readRmc();
+            UartDevice::gpsdata data = gps.parseRmc(rmsline);
+            
+            {
+                std::lock_guard<std::mutex> lock(g_mtx);
+                g_latest_gps = data;
+            }
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "GPS Thread Error: " << e.what() << std::endl;
     }
 }
 
@@ -112,15 +131,17 @@ int main() {
         MapManager mapManager("map.jpg");
 
         // [요구사항 1] 프로그램 시작 시 1회 호모그래피 캘리브레이션 진행[cite: 1]
-        // (실제 시연 운동장의 위성지도 픽셀 점들과 카메라 영상 속 점들을 매칭하여 입력)
         std::vector<cv::Point2f> video_points = { {100, 100}, {500, 100}, {500, 500}, {100, 500} };
         std::vector<cv::Point2f> map_points   = { {200, 200}, {600, 200}, {600, 600}, {200, 600} };
         mapManager.setHomography(video_points, map_points);
         std::cout << "✨ 1회 호모그래피 캘리브레이션 및 매트릭스 계산 완료!" << std::endl;
 
-        // [요구사항 2] 객체 탐지 및 좌표 변환 스레드 백그라운드 구동
-        std::thread background_thread(aiAndTransformThread, "person_detector_v2_best_int8.onnx", std::ref(mapManager));
-        background_thread.detach();
+        // 백그라운드 스레드 구동 (1. AI 객체탐지 & 좌표변환 스레드 / 2. GPS 수신 스레드)
+        std::thread ai_thread(aiAndTransformThread, "person_detector_v2_best_int8.onnx", std::ref(mapManager));
+        ai_thread.detach();
+
+        std::thread gps_thread(gpsReadThread);
+        gps_thread.detach();
 
         double speedSetting = 30.0;
         double driveCommand = 0.0;
@@ -135,7 +156,6 @@ int main() {
 
         TerminalInput keyboard;
         cv::namedWindow("Robot Camera Control", cv::WINDOW_AUTOSIZE);
-        // [요구사항 3] 위성지도 모니터링 창 활성화 (총 2개의 창)
         cv::namedWindow("RC Car Real-time Monitoring", cv::WINDOW_AUTOSIZE);
         
         std::cout << "Keyboard input is read from this terminal. Press W/A/S/D without Enter.\n";
@@ -143,7 +163,7 @@ int main() {
         while (g_running) {
             if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
             
-            // 최신 프레임을 백그라운드 AI 스레드에 전달하기 위해 공유 변수에 갱신
+            // 최신 프레임을 백그라운드 AI 스레드에 전달
             {
                 std::lock_guard<std::mutex> lock(g_mtx);
                 g_latest_frame = frame.clone();
@@ -169,19 +189,22 @@ int main() {
             drawStatus(display, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps);
             cv::imshow("Robot Camera Control", display);
 
-            // [요구사항 3] 백그라운드 스레드에서 처리된 결과를 안전하게 가져와 위성지도 마커 토글 반영
+            // 스레드 안전하게 상태 값 가져오기 (탐지 결과 및 최신 GPS 정보)
             bool current_detected;
             cv::Point2f current_map_pos;
+            UartDevice::gpsdata current_gps;
             {
                 std::lock_guard<std::mutex> lock(g_mtx);
                 current_detected = g_person_detected;
                 current_map_pos = g_person_map_pos;
+                current_gps = g_latest_gps;
             }
 
-            double current_lat = 37.58680; 
-            double current_lon = 127.09790; 
+            // 실시간 GPS 유효성에 따른 좌표 설정 (FIX가 아니면 기본값 혹은 직전 값 유지 가능)
+            double current_lat = current_gps.gpsfix ? current_gps.lat : 37.58680; 
+            double current_lon = current_gps.gpsfix ? current_gps.lon : 127.09790; 
 
-            // 창 2: 위성 뷰어 출력 (사람이 감지되면 마커 표시, 사라지면 자동으로 제거)
+            // 창 2: 위성 뷰어 출력 (사람이 감지되면 마커 표시, 사라지면 제거)
             cv::Mat display_map = mapManager.drawMarkers(current_lat, current_lon, current_detected, current_map_pos);
             cv::imshow("RC Car Real-time Monitoring", display_map);
 
@@ -190,7 +213,7 @@ int main() {
             if (key < 0 && windowKey >= 0) key = windowKey & 0xFF;
             if (key < 0) continue;
 
-            // 키보드 제어 로직 (WASD 등) 유지[cite: 4]
+            // 키보드 제어 로직 (WASD 등)[cite: 4]
             if (key == 'w' || key == 'W') {
                 driveCommand = speedSetting;
                 motors.drive(driveCommand);

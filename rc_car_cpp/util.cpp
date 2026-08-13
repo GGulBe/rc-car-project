@@ -15,7 +15,7 @@ std::runtime_error systemError(const std::string& message) {
     return std::runtime_error(message + ": " + std::strerror(errno));
 }
 
-std::string makePipeline(int width, int height, int fps, double speedSetting, double driveCommand, double steeringAngle, double cameraPan, double cameraTilt, double fps,Bno055::Tilt tilt, UartDevice::gpsdata gpsdata) {
+std::string makePipeline(int width, int height, int fps) {
     std::ostringstream pipeline;
     pipeline << "libcamerasrc ! video/x-raw,width=" << width << ",height=" << height << ",format=NV12,framerate=" << fps
         << "/1 ! videoconvert ! video/x-raw,format=BGR ! queue max-size-buffers=1 leaky=downstream ! appsink drop=true max-buffers=1 sync=false" << std::endl;

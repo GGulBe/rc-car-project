@@ -18,12 +18,11 @@ public:
 
     explicit Bno055(I2cDevice& i2c);
 
-    void initialize();
     Tilt readMotion() const;
 
 private: 
     static std::int16_t decodeInt16(const std::uint8_t* data);
-
+    void initialize();
     I2cDevice& i2c_;
     
     static constexpr std::uint8_t REG_EULER = 0x1A;         // EULER 사용 0x1A  Heading LSB 0x1B  Heading MSB 0x1C  Roll LSB 0x1D  Roll MSB 0x1E  Pitch LSB 0x1F  Pitch MSB

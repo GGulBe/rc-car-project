@@ -10,7 +10,11 @@
 #include <stdexcept>
 #include <cmath>
 #include <algorithm>
- 
+#include <atomic>
+#include <thread>
+#include <mutex>
+#include <functional>
+
 #include "MotorController.h"
 #include "PwmController.h"
 #include "ServoController.h"
@@ -18,6 +22,8 @@
 #include "I2CDevice.h"
 #include "util.h"
 #include "Bno055.h"
+#include "UartDevice.h"
+#include "GPSWorker.h"
 
 constexpr double P0_CENTER = -80.0;
 constexpr double P1_CENTER = 0.0;
@@ -38,50 +44,57 @@ int main() {
         PwmController pwm(i2c);
         ServoController servos(pwm);
         MotorController motors(pwm);
-
         Bno055 imu(bno055I2c);
-        imu.initialize();
+        UartDevice gps;
+        TerminalInput keyboard;
+        
+        std::atomic<bool> running{true};
 
-        servos.setCalibration(0, { P0_MIN, P0_MAX});
-        servos.setCalibration(1, { P1_MIN, P1_MAX });
+        std::thread gpsThread(gpsWorker, std::ref(gps), std::ref(running));
+
         servos.setCalibration(2, { P2_MIN, P2_MAX});
 
-        servos.setAngle(0, P0_CENTER);
-        servos.setAngle(1, P1_CENTER);
         servos.setAngle(2, P2_CENTER);
         motors.stop();
 
-        constexpr int width = 640;
-        constexpr int height = 480;
+        //카메라 해상도와 FPS 설정
+        constexpr int width = 320;
+        constexpr int height = 240;
         constexpr int targetFps = 30;
 
-        cv::VideoCapture camera(makePipeline(width, height, targetFps));
+        //카메라 객체 생성
+        cv::VideoCapture camera(makePipeline(width, height, targetFps),cv::CAP_GSTREAMER);
         if (!camera.isOpened()) {
             std::cerr << "GStreamer camera open failed. Trying V4L2 index 0.\n";
             camera.open(0, cv::CAP_V4L2);
         }
         if (!camera.isOpened()) throw systemError("Failed to open Raspberry Pi camera");
 
+        double steeringAngle = P2_CENTER;
         double speedSetting = 30.0;
         double driveCommand = 0.0;
-        double steeringAngle = P2_CENTER;
-        double cameraPan = P0_CENTER;
-        double cameraTilt = P1_CENTER;
 
+       
         cv::Mat frame;
         int frameCounter = 0;
         double measuredFps = 0.0;
         auto fpsStart = std::chrono::steady_clock::now();
-
-        TerminalInput keyboard;
+        
         cv::namedWindow("Robot Camera Control", cv::WINDOW_AUTOSIZE);
         std::cout << "Keyboard input is read from this terminal. Press W/A/S/D without Enter.\n";
 
-        while (true) {
+        while (running.load()) {
+
+            UartDevice::gpsdata gpsdata;
+
+            {
+                std::lock_guard<std::mutex> lock(gpsMutex);
+                gpsdata = latestGps;
+            }
+
+
             if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
-            
-            const Bno055::Tilt tilt = imu.readMotion();
-            std::cout <<"heading : "<<tilt.headingDeg <<" roll : "<< tilt.rollDeg <<" pitch : "<< tilt.pitchDeg << std::endl; 
+            ++frameCounter;
             const auto now = std::chrono::steady_clock::now();
             const double elapsed = std::chrono::duration<double>(now - fpsStart).count();
             if (elapsed >= 1.0) {
@@ -89,9 +102,10 @@ int main() {
                 frameCounter = 0;
                 fpsStart = now;
             }
-            
-            cv::Mat display = frame.clone();
-            drawStatus(display, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps);
+
+            Bno055::Tilt tilt = imu.readMotion();
+             
+            cv::Mat display = makeDisplay(frame, measuredFps, tilt, gpsdata, speedSetting, driveCommand, steeringAngle);
             cv::imshow("Robot Camera Control", display);
 
             const int windowKey = cv::waitKey(1);
@@ -123,28 +137,6 @@ int main() {
                 steeringAngle = P2_CENTER;
                 servos.setAngle(2, steeringAngle);
             }
-            else if (key == 'j' || key == 'J') {
-                cameraPan = std::max(P0_MIN, cameraPan - CAMERA_STEP);
-                servos.setAngle(0, cameraPan);
-            }
-            else if (key == 'l' || key == 'L') {
-                cameraPan = std::min(P0_MAX, cameraPan + CAMERA_STEP);
-                servos.setAngle(0, cameraPan);
-            }
-            else if (key == 'i' || key == 'I') {
-                cameraTilt = std::min(P1_MAX, cameraTilt + CAMERA_STEP);
-                servos.setAngle(1, cameraTilt);
-            }
-            else if (key == 'k' || key == 'K') {
-                cameraTilt = std::max(P1_MIN, cameraTilt - CAMERA_STEP);
-                servos.setAngle(1, cameraTilt);
-            }
-            else if (key == 'c' || key == 'C') {
-                cameraPan = P0_CENTER;
-                cameraTilt = P1_CENTER;
-                servos.setAngle(0, cameraPan);
-                servos.setAngle(1, cameraTilt);
-            }
             else if (key == '+' || key == '=') {
                 speedSetting = std::min(100.0, speedSetting + 5.0);
                 if (driveCommand != 0.0) {
@@ -159,19 +151,9 @@ int main() {
                     motors.drive(driveCommand);
                 }
             }
-            else if (key == 'p' || key == 'P') {
-                const std::string filename = makePhotoFilename();
-                if (cv::imwrite(filename, frame)) std::cout << "Saved: " << filename << '\n';
-                else std::cerr << "Failed to save image\n";
-            }
+            //방향 제어 중립
             else if (key == 'r' || key == 'R') {
-                driveCommand = 0.0;
                 steeringAngle = P2_CENTER;
-                cameraPan = P0_CENTER;
-                cameraTilt = P1_CENTER;
-                motors.stop();
-                servos.setAngle(0, cameraPan);
-                servos.setAngle(1, cameraTilt);
                 servos.setAngle(2, steeringAngle);
             }
             else if (key == 'q' || key == 'Q' || key == 27) {
@@ -183,14 +165,14 @@ int main() {
         servos.setAngle(2, P2_CENTER);
         camera.release();
         cv::destroyAllWindows();
+        running = false;
+
+        gpsThread.join();
+
         return 0;
     }
     catch (const cv::Exception& error) {
         std::cerr << "OpenCV error: " << error.what() << '\n';
-        return 1;
-    }
-    catch (const std::exception& error) {
-        std::cerr << "Error: " << error.what() << '\n';
         return 1;
     }
 }

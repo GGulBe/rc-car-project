@@ -2,15 +2,26 @@
 #include <string>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 class UartDevice
 {
 public:
+    struct gpsdata
+    {
+        bool gpsfix;//위성이 잡혔는지 확인하는 변수
+        double lat;
+        double lon;
+        std::string utc;
+        std::string date;
+    };
+    
     explicit UartDevice(const std::string& devicePath = "/dev/serial0");
     ~UartDevice();
-
-    std::string readLine();
-
+    
+    gpsdata parseRmc();
 private:
+    std::string readRmc();
+    std::string readLine();
     int fd_ = -1;
     void configure();
 

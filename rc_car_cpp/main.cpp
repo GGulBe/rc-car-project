@@ -71,7 +71,8 @@ int main() {
         if (!camera.isOpened()) throw systemError("Failed to open Raspberry Pi camera");
 
         double steeringAngle = P2_CENTER;
-
+        double speedSetting = 30.0;
+        double driveCommand = 0.0;
 
        
         cv::Mat frame;

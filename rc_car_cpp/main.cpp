@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <thread>
 #include <mutex>
+#include <vector>
  
 #include "MotorController.h"
 #include "PwmController.h"
@@ -37,15 +38,63 @@ constexpr double P2_MAX = -50.0;
 constexpr double CAMERA_STEP = 5.0;
 constexpr double STEERING_STEP = 1.0;
 
-// 멀티스레드 간 데이터 보호를 위한 뮤텍스 및 공유 전역 변수
 std::mutex g_mtx;
 cv::Mat g_latest_frame;
 bool g_person_detected = false;
 cv::Point2f g_person_map_pos(-1, -1);
-UartDevice::gpsdata g_latest_gps{}; // 실시간 GPS 공유 데이터
+UartDevice::gpsdata g_latest_gps{};
 bool g_running = true;
 
-// [스레드 분할 1] 객체 탐지 및 호모그래피 좌표 변환 전용 백그라운드 스레드
+struct ClickContext {
+    std::vector<cv::Point2f> points;
+    std::string window_name;
+    cv::Mat image;
+};
+
+void mouseCallback(int event, int x, int y, int flags, void* userdata) {
+    if (event == cv::EVENT_LBUTTONDOWN) {
+        ClickContext* ctx = reinterpret_cast<ClickContext*>(userdata);
+        if (ctx->points.size() < 4) {
+            ctx->points.push_back(cv::Point2f(static_cast<float>(x), static_cast<float>(y)));
+            std::cout << "[" << ctx->window_name << "] 선택된 픽셀 좌표 (" << ctx->points.size() << "/4): " 
+                      << x << ", " << y << std::endl;
+            
+            cv::circle(ctx->image, cv::Point(x, y), 5, cv::Scalar(0, 255, 0), -1);
+            cv::putText(ctx->image, std::to_string(ctx->points.size()), cv::Point(x + 8, y - 8),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
+            cv::imshow(ctx->window_name, ctx->image);
+        }
+    }
+}
+
+std::vector<cv::Point2f> getCalibrationPoints(cv::Mat& img, const std::string& win_name) {
+    ClickContext context;
+    context.window_name = win_name;
+    context.image = img.clone();
+
+    cv::namedWindow(win_name, cv::WINDOW_AUTOSIZE);
+    cv::imshow(win_name, context.image);
+    cv::setMouseCallback(win_name, mouseCallback, &context);
+
+    std::cout << "\n=== " << win_name << " 창에서 대응점 4개를 순서대로 클릭하세요! ===" << std::endl;
+    std::cout << "(예시 순서: 1.왼쪽 위 -> 2.오른쪽 위 -> 3.오른쪽 아래 -> 4.왼쪽 아래)" << std::endl;
+
+    while (true) {
+        int key = cv::waitKey(10);
+        if (context.points.size() >= 4) {
+            std::cout << win_name << " 4개 점 수집 완료!\n" << std::endl;
+            break;
+        }
+        if (key == 'q' || key == 27) {
+            std::cerr << "캘리브레이션이 취소되었습니다." << std::endl;
+            break;
+        }
+    }
+
+    cv::destroyWindow(win_name);
+    return context.points;
+}
+
 void aiAndTransformThread(const std::string& model_path, MapManager& mapManager) {
     Detector detector(model_path, 0.3f);
     cv::Mat target_frame;
@@ -62,22 +111,19 @@ void aiAndTransformThread(const std::string& model_path, MapManager& mapManager)
 
         cv::Point2f transformed_pos(-1, -1);
         if (detected) {
-            // 백그라운드 스레드에서 곧바로 호모그래피 행렬을 이용해 위성지도 좌표로 변환[cite: 1]
             transformed_pos = mapManager.transformToMap(bottom_center);
         }
 
-        // 결과를 안전하게 공유 변수에 반영
         {
             std::lock_guard<std::mutex> lock(g_mtx);
             g_person_detected = detected;
             g_person_map_pos = transformed_pos;
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(20)); // RPi4 CPU 부하 방지
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
 }
 
-// [스레드 분할 2] GPS 센서 데이터 수신 전용 백그라운드 스레드 (시리얼 블로킹 방지)
 void gpsReadThread() {
     try {
         UartDevice gps;
@@ -110,14 +156,14 @@ int main() {
         servos.setCalibration(1, { P1_MIN, P1_MAX });
         servos.setCalibration(2, { P2_MIN, P2_MAX});
 
-        // 카메라 화각 고정 (팬/틸트 값 고정)
         servos.setAngle(0, P0_CENTER);
         servos.setAngle(1, P1_CENTER);
         servos.setAngle(2, P2_CENTER);
         motors.stop();
 
-        constexpr int width = 640;
-        constexpr int height = 480;
+        // 카메라 해상도를 요구하신 320x240으로 설정
+        constexpr int width = 320;
+        constexpr int height = 240;
         constexpr int targetFps = 30;
 
         cv::VideoCapture camera(makePipeline(width, height, targetFps));
@@ -127,16 +173,22 @@ int main() {
         }
         if (!camera.isOpened()) throw systemError("Failed to open Raspberry Pi camera");
 
-        // 위성지도 관리자 초기화
-        MapManager mapManager("map.jpg");
+        MapManager mapManager("map_3.jpg");
 
-        // [요구사항 1] 프로그램 시작 시 1회 호모그래피 캘리브레이션 진행[cite: 1]
-        std::vector<cv::Point2f> video_points = { {100, 100}, {500, 100}, {500, 500}, {100, 500} };
-        std::vector<cv::Point2f> map_points   = { {200, 200}, {600, 200}, {600, 600}, {200, 600} };
+        // 위성 지도 마우스 캘리브레이션 (552x662 기준)
+        cv::Mat map_image = cv::imread("map_3.jpg");
+        if (map_image.empty()) throw std::runtime_error("map_3.jpg 이미지 파일을 찾을 수 없습니다!");
+        std::vector<cv::Point2f> map_points = getCalibrationPoints(map_image, "Calibration: Click 4 Points on Map");
+
+        // 카메라 화면 마우스 캘리브레이션 (320x240 기준)
+        cv::Mat cam_frame;
+        camera.read(cam_frame);
+        if (cam_frame.empty()) throw std::runtime_error("카메라 프레임을 읽어오지 못했습니다!");
+        std::vector<cv::Point2f> video_points = getCalibrationPoints(cam_frame, "Calibration: Click 4 Points on Camera (320x240)");
+
         mapManager.setHomography(video_points, map_points);
-        std::cout << "✨ 1회 호모그래피 캘리브레이션 및 매트릭스 계산 완료!" << std::endl;
+        std::cout << "✨ 320x240 카메라 및 map_3.jpg 캘리브레이션 완료!" << std::endl;
 
-        // 백그라운드 스레드 구동 (1. AI 객체탐지 & 좌표변환 스레드 / 2. GPS 수신 스레드)
         std::thread ai_thread(aiAndTransformThread, "person_detector_v2_best_int8.onnx", std::ref(mapManager));
         ai_thread.detach();
 
@@ -163,16 +215,13 @@ int main() {
         while (g_running) {
             if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
             
-            // 최신 프레임을 백그라운드 AI 스레드에 전달
             {
                 std::lock_guard<std::mutex> lock(g_mtx);
                 g_latest_frame = frame.clone();
             }
 
-            // FPS 측정용
             frameCounter++;
 
-            // IMU 센서 데이터 읽기[cite: 4]
             const Bno055::Tilt tilt = imu.readMotion();
             std::cout << "heading : " << tilt.headingDeg << " roll : " << tilt.rollDeg << " pitch : " << tilt.pitchDeg << std::endl; 
             
@@ -184,12 +233,10 @@ int main() {
                 fpsStart = now;
             }
             
-            // 창 1: 카메라 뷰어 출력[cite: 4]
             cv::Mat display = frame.clone();
             drawStatus(display, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps);
             cv::imshow("Robot Camera Control", display);
 
-            // 스레드 안전하게 상태 값 가져오기 (탐지 결과 및 최신 GPS 정보)
             bool current_detected;
             cv::Point2f current_map_pos;
             UartDevice::gpsdata current_gps;
@@ -200,11 +247,9 @@ int main() {
                 current_gps = g_latest_gps;
             }
 
-            // 실시간 GPS 유효성에 따른 좌표 설정 (FIX가 아니면 기본값 혹은 직전 값 유지 가능)
-            double current_lat = current_gps.gpsfix ? current_gps.lat : 37.58680; 
-            double current_lon = current_gps.gpsfix ? current_gps.lon : 127.09790; 
+            double current_lat = current_gps.gpsfix ? current_gps.lat : 37.58635; 
+            double current_lon = current_gps.gpsfix ? current_gps.lon : 127.09746; 
 
-            // 창 2: 위성 뷰어 출력 (사람이 감지되면 마커 표시, 사라지면 제거)
             cv::Mat display_map = mapManager.drawMarkers(current_lat, current_lon, current_detected, current_map_pos);
             cv::imshow("RC Car Real-time Monitoring", display_map);
 
@@ -213,7 +258,6 @@ int main() {
             if (key < 0 && windowKey >= 0) key = windowKey & 0xFF;
             if (key < 0) continue;
 
-            // 키보드 제어 로직 (WASD 등)[cite: 4]
             if (key == 'w' || key == 'W') {
                 driveCommand = speedSetting;
                 motors.drive(driveCommand);

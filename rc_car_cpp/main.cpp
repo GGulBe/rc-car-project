@@ -93,7 +93,7 @@ int main() {
             UartDevice::gpsdata gpsdata = gps.parseRmc(rmsline);
             Bno055::Tilt tilt = imu.readMotion();
             cv::Mat display = frame.clone();
-            drawStatus(display, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps, tilt, gps);
+            drawStatus(display, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps, tilt, gpsdata);
             cv::imshow("Robot Camera Control", display);
 
             const int windowKey = cv::waitKey(1);

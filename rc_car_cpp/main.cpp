@@ -52,11 +52,11 @@ int main() {
         servos.setAngle(2, P2_CENTER);
         motors.stop();
 
-        constexpr int width = 640;
-        constexpr int height = 480;
+        constexpr int width = 320;
+        constexpr int height = 240;
         constexpr int targetFps = 30;
 
-        cv::VideoCapture camera(makePipeline(width, height, targetFps));
+        
         if (!camera.isOpened()) {
             std::cerr << "GStreamer camera open failed. Trying V4L2 index 0.\n";
             camera.open(0, cv::CAP_V4L2);
@@ -89,11 +89,11 @@ int main() {
                 fpsStart = now;
             }
 
-            std::string rmsline = gps.readRmc();
-            UartDevice::gpsdata gpsdata = gps.parseRmc(rmsline);
+            //std::string rmsline = gps.readRmc();
+            UartDevice::gpsdata gpsdata = {}; //gps.parseRmc(rmsline);
             Bno055::Tilt tilt = imu.readMotion();
             cv::Mat display = frame.clone();
-            drawStatus(display, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps, tilt, gpsdata);
+            cv::VideoCapture camera(makePipeline(width, height, targetFps, speedSetting, driveCommand, steeringAngle, cameraPan, cameraTilt, measuredFps, tilt, gpsdata));
             cv::imshow("Robot Camera Control", display);
 
             const int windowKey = cv::waitKey(1);

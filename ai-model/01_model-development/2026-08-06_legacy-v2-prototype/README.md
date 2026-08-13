@@ -1,6 +1,6 @@
 # 2026-08-06 초기 Person Detector v2 — Legacy
 
-프로젝트 초기에 만든 학습 노트북, PyTorch 체크포인트, TorchScript 변환 코드입니다. 이후 프로젝트 요구에 맞춰 DSConv+Residual, 경량 FPN, anchor-free head를 직접 구현했으므로 이 폴더는 개발 이력 보존용입니다.
+프로젝트 초기에 선생님이 제공한 결과 코드를 바탕으로 사용한 학습 노트북, PyTorch 체크포인트, TorchScript 변환 코드입니다. 이후 프로젝트 요구에 맞춰 DSConv+Residual, 경량 FPN, anchor-free head를 직접 구현했으므로 이 폴더는 개발 이력 보존용입니다.
 
 ## 포함 내용
 

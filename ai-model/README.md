@@ -18,6 +18,7 @@ RC카의 Raspberry Pi에서 사람을 실시간으로 감지하기 위한 AI 파
 |---|---|
 | 프로젝트와 모델 구조 | [`01_model-development/2026-08-12_custom-anchor-free-detector`](01_model-development/2026-08-12_custom-anchor-free-detector/) |
 | 6대 노트북 1차 실험 결과와 선택 근거 | [`02_training-experiments/2026-08-13_round1-six-laptop-study`](02_training-experiments/2026-08-13_round1-six-laptop-study/) |
+| 날짜별 INT8 경량화 모델 전체와 변화·비교 | [`03_lightweight-deployment/2026-08-13_int8-model-evolution-and-finalists`](03_lightweight-deployment/2026-08-13_int8-model-evolution-and-finalists/) |
 | Raspberry Pi에서 바로 시험할 최신 모델 | [`03_lightweight-deployment/2026-08-13_results4-pi-model-variants`](03_lightweight-deployment/2026-08-13_results4-pi-model-variants/) |
 | Raspberry Pi 1차 카메라 실측 기록 | [`03_lightweight-deployment/2026-08-12_raspberry-pi-first-benchmark`](03_lightweight-deployment/2026-08-12_raspberry-pi-first-benchmark/) |
 | 캘리브레이션 팀 입력·출력 규약 | [`04_team-integration/2026-08-12_calibration-interface-guide`](04_team-integration/2026-08-12_calibration-interface-guide/) |
@@ -67,6 +68,7 @@ RGB 320×240
 | 2026-08-13 | 6대 노트북 1차 실험 분석 | FPN48 results.4를 1순위로 선정, 불리한 설정 제거 |
 | 2026-08-13 | results.4 팀 전달 | best/last 체크포인트, 학습 코드, 이어학습 안내 제공 |
 | 2026-08-13 | 최신 배포 후보 생성 | FP32와 INT8 2종을 동일 조건에서 비교할 Pi 시험 묶음 생성 |
+| 2026-08-13 | INT8 발전 과정 통합 | 선생님 코드 기반 초기 임시본부터 자체 FPN48 최종 후보까지 4개 INT8 모델과 선택·제외 근거 정리 |
 
 세부 수치와 선택 근거는 각 날짜 폴더의 `README.md`에서 확인할 수 있습니다.
 
@@ -79,6 +81,7 @@ RGB 320×240
 
 ### Raspberry Pi에서 시험할 때
 
+- INT8 전체 발전 과정과 비교: [`03_lightweight-deployment/2026-08-13_int8-model-evolution-and-finalists`](03_lightweight-deployment/2026-08-13_int8-model-evolution-and-finalists/)
 - 최신 시험 묶음: [`03_lightweight-deployment/2026-08-13_results4-pi-model-variants`](03_lightweight-deployment/2026-08-13_results4-pi-model-variants/)
 - 먼저 `README.md`와 `TEST_CHECKLIST_KO.txt`를 읽고 세 모델을 같은 조건으로 비교합니다.
 - 현재 정확도 기준 1순위는 FP32입니다. INT8은 Raspberry Pi에서 실제 속도 이득이 정확도 하락을 보상할 때만 선택합니다.

@@ -4,6 +4,7 @@ PyTorch 모델을 ONNX/INT8로 변환하고 Raspberry Pi 카메라에서 속도�
 
 | 날짜 | 폴더 | 상태 | 설명 |
 |---|---|---|---|
+| 2026-08-13 | [`2026-08-13_int8-model-evolution-and-finalists`](2026-08-13_int8-model-evolution-and-finalists/) | **INT8 전체 비교 안내** | 날짜별 INT8 모델 4개, 발전 과정, 정확도·속도·크기·선택/제외 근거 |
 | 2026-08-07 | [`2026-08-07_legacy-int8-onnx`](2026-08-07_legacy-int8-onnx/) | Legacy | 초기 v2 모델의 ONNX/INT8 변환 실험 |
 | 2026-08-12 | [`2026-08-12_preliminary-calibration-handoff`](2026-08-12_preliminary-calibration-handoff/) | Legacy | 최종 모델 전 캘리브레이션 팀 연결 확인용 임시 FP32/INT8 전달본 |
 | 2026-08-12 | [`2026-08-12_raspberry-pi-first-benchmark`](2026-08-12_raspberry-pi-first-benchmark/) | 완료 | OV5647 실시간 카메라, 스레드별 지연시간·발열 실측 |
@@ -16,4 +17,4 @@ PyTorch 모델을 ONNX/INT8로 변환하고 Raspberry Pi 카메라에서 속도�
 - Raspberry Pi 실행 스레드: 우선 2 threads
 - 1차 현장 목표: 8 FPS 이상, 평균 sensor-to-result 200 ms 이하, 75°C 미만
 
-최신 시험은 `2026-08-13_results4-pi-model-variants`의 안내를 따릅니다.
+경량화 모델의 전체 발전 과정과 INT8끼리의 비교는 `2026-08-13_int8-model-evolution-and-finalists`에서 확인합니다. 최신 Raspberry Pi 시험은 `2026-08-13_results4-pi-model-variants`의 안내를 따릅니다.

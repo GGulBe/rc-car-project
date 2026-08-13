@@ -8,6 +8,7 @@
 - 모델 개발 코드: [`ai-model/01_model-development`](ai-model/01_model-development/)
 - 학습 실험과 비교 결과: [`ai-model/02_training-experiments`](ai-model/02_training-experiments/)
 - 경량화와 Raspberry Pi 배포: [`ai-model/03_lightweight-deployment`](ai-model/03_lightweight-deployment/)
+- 날짜별 INT8 모델 발전·성능 비교: [`ai-model/03_lightweight-deployment/2026-08-13_int8-model-evolution-and-finalists`](ai-model/03_lightweight-deployment/2026-08-13_int8-model-evolution-and-finalists/)
 - 캘리브레이션 팀 연동과 인계본: [`ai-model/04_team-integration`](ai-model/04_team-integration/)
 
 현재 AI 기준 모델은 2026-08-13 1차 병렬 실험의 `results.4` FPN48입니다. 상세 지표, 선택 근거, 최신 실행 방법은 `ai-model/README.md`에서 확인하세요.

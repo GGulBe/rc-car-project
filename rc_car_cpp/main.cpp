@@ -44,7 +44,6 @@ int main() {
         UartDevice gps;
         TerminalInput keyboard;
 
-
         servos.setCalibration(2, { P2_MIN, P2_MAX});
 
         servos.setAngle(2, P2_CENTER);
@@ -84,7 +83,16 @@ int main() {
         mapManager.setHomography(video_points, map_points);
         std::cout << "✨ 320x240 카메라 및 map_3.jpg 호모그래피 캘리브레이션 완료!" << std::endl;
 
-        std::thread ai_thread(aiAndTransformThread, "person_detector_v2_best_int8.onnx", std::ref(mapManager));
+        // 💡 AI 모델 로드 및 스레드 시작부 (OpenCV 파싱 에러 발생 시 프로그램 종료 대신 경고 후 주행 계속 진행)
+        std::thread ai_thread([](MapManager& mgr) {
+            try {
+                aiAndTransformThread("results4_fixed.onnx", mgr);
+            } catch (const cv::Exception& e) {
+                std::cerr << "⚠️ [AI 경고] OpenCV DNN 모델 파싱 에러 (AI 기능은 비활성화됩니다): " << e.what() << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "⚠️ [AI 경고] AI 스레드 예외 발생: " << e.what() << std::endl;
+            }
+        }, std::ref(mapManager));
         ai_thread.detach();
 
         double speedSetting = 30.0;

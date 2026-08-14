@@ -6,11 +6,13 @@ RC카의 Raspberry Pi에서 사람을 실시간으로 감지하기 위한 AI 파
 >
 > **선정 기준:** validation mAP50:95 `0.2525`, F1 `0.5713`, small-person recall `0.5294`
 >
+> **2026-08-14 상태:** Round 2 최고 `results.11`은 mAP50:95 `0.2415`로 기준 모델을 넘지 못함. FPN48 중심 Round 3 성능 탐색 6개 실행 중
+>
 > **현재 배포 우선순위:** FP32 ONNX → INT8 Percentile → INT8 MinMax 순으로 Raspberry Pi 실측 비교
 >
 > **최종 Test split:** 아직 사용하지 않음
 
-마지막 정리: **2026-08-13**
+마지막 정리: **2026-08-14**
 
 ## 처음 보는 사람을 위한 빠른 길찾기
 
@@ -18,6 +20,7 @@ RC카의 Raspberry Pi에서 사람을 실시간으로 감지하기 위한 AI 파
 |---|---|
 | 프로젝트와 모델 구조 | [`01_model-development/2026-08-12_custom-anchor-free-detector`](01_model-development/2026-08-12_custom-anchor-free-detector/) |
 | 6대 노트북 1차 실험 결과와 선택 근거 | [`02_training-experiments/2026-08-13_round1-six-laptop-study`](02_training-experiments/2026-08-13_round1-six-laptop-study/) |
+| Round 2 7개 결과와 Round 3 최종 성능 탐색 | [`02_training-experiments/2026-08-14_round2-seven-run-analysis-and-round3-search`](02_training-experiments/2026-08-14_round2-seven-run-analysis-and-round3-search/) |
 | 날짜별 INT8 경량화 모델 전체와 변화·비교 | [`03_lightweight-deployment/2026-08-13_int8-model-evolution-and-finalists`](03_lightweight-deployment/2026-08-13_int8-model-evolution-and-finalists/) |
 | Raspberry Pi에서 바로 시험할 최신 모델 | [`03_lightweight-deployment/2026-08-13_results4-pi-model-variants`](03_lightweight-deployment/2026-08-13_results4-pi-model-variants/) |
 | Raspberry Pi 1차 카메라 실측 기록 | [`03_lightweight-deployment/2026-08-12_raspberry-pi-first-benchmark`](03_lightweight-deployment/2026-08-12_raspberry-pi-first-benchmark/) |
@@ -54,6 +57,8 @@ RGB 320×240
 - 학습 평가: mAP50:95, Precision, Recall, F1, tiny/small recall, loss, 속도, VRAM
 - 배포 평가: 추론 지연시간, sensor-to-result 지연시간, FPS, 발열, 오검출, 박스 위치
 - `best.pt` 저장 기준: validation mAP50:95
+- `best.pt`는 mAP 0.25 통과 파일이 아니라 각 실행에서 validation mAP50:95가 가장 높은 checkpoint
+- 성능 목표: 최소 mAP50:95 0.25, 현실 목표 약 0.30, 도전 목표 0.40 이상
 - 최종 선택 기준: mAP 하나가 아니라 정확도·Recall·작은 사람 검출·Pi 속도·발열을 함께 비교
 
 ## 날짜별 진행 기록
@@ -69,6 +74,8 @@ RGB 320×240
 | 2026-08-13 | results.4 팀 전달 | best/last 체크포인트, 학습 코드, 이어학습 안내 제공 |
 | 2026-08-13 | 최신 배포 후보 생성 | FP32와 INT8 2종을 동일 조건에서 비교할 Pi 시험 묶음 생성 |
 | 2026-08-13 | INT8 발전 과정 통합 | 선생님 코드 기반 초기 임시본부터 자체 FPN48 최종 후보까지 4개 INT8 모델과 선택·제외 근거 정리 |
+| 2026-08-14 | Round 2 7개 결과 분석 | 학교 6개 70 epoch 완료·집 1개 epoch 50 중간 결과 비교, warning 0, 전체 최고는 results.4 유지 |
+| 2026-08-14 | Round 3 최종 병렬 탐색 | FPN48 exp2.0/2.5 재현성, box weight 2.5, center radius 2.0을 100-epoch 스케줄로 6대에서 비교 |
 
 세부 수치와 선택 근거는 각 날짜 폴더의 `README.md`에서 확인할 수 있습니다.
 
@@ -78,6 +85,7 @@ RGB 320×240
 
 - 기본 개발 코드: [`01_model-development/2026-08-12_custom-anchor-free-detector`](01_model-development/2026-08-12_custom-anchor-free-detector/)
 - results.4 인계본: [`04_team-integration/2026-08-13_results4-training-handoff`](04_team-integration/2026-08-13_results4-training-handoff/)
+- 최신 실험 설정과 부분 결과 회수법: [`02_training-experiments/2026-08-14_round2-seven-run-analysis-and-round3-search`](02_training-experiments/2026-08-14_round2-seven-run-analysis-and-round3-search/)
 
 ### Raspberry Pi에서 시험할 때
 
@@ -109,4 +117,5 @@ RGB 320×240
 - `legacy` 폴더는 현재 모델과 구조가 다르므로 새 학습이나 배포의 출발점으로 사용하지 않습니다.
 - GitHub에 데이터셋은 포함하지 않습니다. 학습에는 별도의 `data/processed/v1_grouped`가 필요합니다.
 - 최종 후보가 결정되기 전까지 Test split을 반복 사용하지 않습니다.
+- Round 3 결과가 나오기 전에는 `results.11`을 새로운 최종 모델로 간주하지 않습니다. 전체 기준 모델은 계속 `results.4`입니다.
 - self-contained 팀 전달본에는 재현 편의를 위해 일부 학습 코드가 중복 포함되어 있습니다.

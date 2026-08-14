@@ -64,18 +64,16 @@ Detector::~Detector() {
     }
 }
 
+// 사람 감지하면 bottom_center좌표 반환하는 함수
 bool Detector::detectPerson(const cv::Mat& frame, cv::Point2f& bottom_center) {
     if (frame.empty() || !pImpl || !pImpl->session) return false;
 
-    // 1. 전처리: BGR -> RGB 변환 및 float형 정규화 (0.0 ~ 1.0)
     cv::Mat rgb, float_img;
     cv::cvtColor(frame, rgb, cv::COLOR_BGR2RGB);
     rgb.convertTo(float_img, CV_32FC3, 1.0 / 255.0);
 
-    // 2. NCHW 형식으로 변환 (HWC -> CHW) 및 배치 차원 포함 (1 x 3 x H x W)
     cv::Mat blob = cv::dnn::blobFromImage(float_img, 1.0, cv::Size(320, 240), cv::Scalar(0,0,0), true, false);
 
-    // 3. ONNX Runtime 입력 텐서 생성
     size_t input_tensor_size = 1 * 3 * 240 * 320;
     std::vector<int64_t> input_shape = {1, 3, 240, 320};
 
@@ -88,7 +86,7 @@ bool Detector::detectPerson(const cv::Mat& frame, cv::Point2f& bottom_center) {
         input_shape.size()
     );
 
-    // 4. 모델 추론 실행 (Run)
+    // 4. 모델 추론 실행 
     try {
         auto output_tensors = pImpl->session->Run(
             Ort::RunOptions{nullptr},
@@ -101,7 +99,7 @@ bool Detector::detectPerson(const cv::Mat& frame, cv::Point2f& bottom_center) {
 
         if (output_tensors.empty()) return false;
 
-        // 5. 출력 결과 파싱
+        // 출력 결과 파싱
         float* raw_output = output_tensors[0].GetTensorMutableData<float>();
         auto type_info = output_tensors[0].GetTensorTypeAndShapeInfo();
         auto shape = type_info.GetShape();
@@ -115,6 +113,7 @@ bool Detector::detectPerson(const cv::Mat& frame, cv::Point2f& bottom_center) {
         bool person_detected = false;
         cv::Rect best_box;
 
+        // 신뢰도(conf)보다 가장 높은 객체 탐색
         for (int i = 0; i < rows; ++i) {
             float confidence = 0.0f;
             float cx = 0, cy = 0, w = 0, h = 0;
@@ -127,6 +126,7 @@ bool Detector::detectPerson(const cv::Mat& frame, cv::Point2f& bottom_center) {
                 confidence = raw_output[4 * rows + i];
             }
 
+            // conf = 0.2
             if (confidence > max_conf) {
                 max_conf = confidence;
                 int xmin = static_cast<int>(cx - w / 2.0f);
@@ -139,6 +139,7 @@ bool Detector::detectPerson(const cv::Mat& frame, cv::Point2f& bottom_center) {
             }
         }
 
+        // true 받으면 bottom_center좌표 계산
         if (person_detected) {
             float u = static_cast<float>(best_box.x + best_box.width / 2);
             float v = static_cast<float>(best_box.y + best_box.height);

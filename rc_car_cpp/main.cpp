@@ -45,7 +45,6 @@ int main() {
         TerminalInput keyboard;
 
         servos.setCalibration(2, { P2_MIN, P2_MAX});
-
         servos.setAngle(2, P2_CENTER);
         motors.stop();
 
@@ -63,6 +62,7 @@ int main() {
         }
         if (!camera.isOpened()) throw systemError("Failed to open Raspberry Pi camera");
 
+        // MapManager 파트( 호모그래피 , 캘리브레이션 수행 )
         MapManager mapManager("map_3.jpg");
 
         cv::Mat map_image = cv::imread("map_3.jpg");
@@ -83,12 +83,10 @@ int main() {
         mapManager.setHomography(video_points, map_points);
         std::cout << "✨ 320x240 카메라 및 map_3.jpg 호모그래피 캘리브레이션 완료!" << std::endl;
 
-        // 💡 AI 모델 로드 및 스레드 시작부 (OpenCV 파싱 에러 발생 시 프로그램 종료 대신 경고 후 주행 계속 진행)
+        // 객체 탐지 및 좌표 변환 스레드 생성하면서 분리
         std::thread ai_thread([](MapManager& mgr) {
             try {
                 aiAndTransformThread("results4_fixed.onnx", mgr);
-            } catch (const cv::Exception& e) {
-                std::cerr << "⚠️ [AI 경고] OpenCV DNN 모델 파싱 에러 (AI 기능은 비활성화됩니다): " << e.what() << std::endl;
             } catch (const std::exception& e) {
                 std::cerr << "⚠️ [AI 경고] AI 스레드 예외 발생: " << e.what() << std::endl;
             }
@@ -104,8 +102,8 @@ int main() {
         double measuredFps = 0.0;
         auto fpsStart = std::chrono::steady_clock::now();
 
-        cv::namedWindow("Robot Camera Control", cv::WINDOW_AUTOSIZE);
-        cv::namedWindow("RC Car Real-time Monitoring", cv::WINDOW_AUTOSIZE);
+        cv::namedWindow("Robot Camera Control", cv::WINDOW_AUTOSIZE); // RC CAR 카메라
+        cv::namedWindow("RC Car Real-time Monitoring", cv::WINDOW_AUTOSIZE); // 위성 지도
         std::cout << "Keyboard input is read from this terminal. Press W/A/S/D without Enter.\n";
 
         while (running.load()) {
@@ -147,6 +145,7 @@ int main() {
             double current_lat = gpsdata.gpsfix ? gpsdata.lat : 37.58635; 
             double current_lon = gpsdata.gpsfix ? gpsdata.lon : 127.09746; 
 
+            // 위성 지도에 rc카 및 사람 마킹
             cv::Mat display_map = mapManager.drawMarkers(current_lat, current_lon, current_detected, current_map_pos);
             cv::imshow("RC Car Real-time Monitoring", display_map);
 
@@ -215,12 +214,9 @@ int main() {
 
         return 0;
     }
+
     catch (const cv::Exception& error) {
         std::cerr << "OpenCV error: " << error.what() << '\n';
-        return 1;
-    }
-    catch (const std::exception& error) {
-        std::cerr << "Error: " << error.what() << '\n';
         return 1;
     }
 }

@@ -11,6 +11,7 @@ cv::Point2f g_person_map_pos(-1, -1);
 std::atomic<bool> g_ai_running{true};
 
 void mouseCallback(int event, int x, int y, int flags, void* userdata) {
+    flags = NULL;
     if (event == cv::EVENT_LBUTTONDOWN) {
         ClickContext* ctx = reinterpret_cast<ClickContext*>(userdata);
         if (ctx->points.size() < 4) {
@@ -25,7 +26,7 @@ void mouseCallback(int event, int x, int y, int flags, void* userdata) {
         }
     }
 }
-
+// 마우스 클릭하여 캘리브레이션 진행
 std::vector<cv::Point2f> getCalibrationPoints(cv::Mat& img, const std::string& win_name) {
     ClickContext context;
     context.window_name = win_name;
@@ -37,10 +38,10 @@ std::vector<cv::Point2f> getCalibrationPoints(cv::Mat& img, const std::string& w
 
     std::cout << "\n=== " << win_name << " 창에서 대응점 4개를 순서대로 클릭하세요! ===" << std::endl;
     std::cout << "(예시 순서: 1.왼쪽 위 -> 2.오른쪽 위 -> 3.오른쪽 아래 -> 4.왼쪽 아래)" << std::endl;
-
+    
     while (true) {
         int key = cv::waitKey(10);
-        if (context.points.size() >= 4) {
+        if (context.points.size() >= 4) { // 현재 Default값이 4인데 추후 수정
             std::cout << win_name << " 4개 점 수집 완료!\n" << std::endl;
             break;
         }
@@ -54,6 +55,7 @@ std::vector<cv::Point2f> getCalibrationPoints(cv::Mat& img, const std::string& w
     return context.points;
 }
 
+// 백그라운드에서 AI 추론 및 좌표 변환 스레드 함수
 void aiAndTransformThread(const std::string& model_path, MapManager& mapManager) {
     Detector detector(model_path, 0.3f);
     cv::Mat target_frame;
@@ -66,14 +68,17 @@ void aiAndTransformThread(const std::string& model_path, MapManager& mapManager)
         }
 
         cv::Point2f bottom_center(0, 0);
+        // 사람 감지 및 bottom_center좌표 받는 함수
         bool detected = detector.detectPerson(target_frame, bottom_center);
 
         cv::Point2f transformed_pos(-1, -1);
+        // 사람이 감지 되면 호모그래피로 계산하여 좌표변환
         if (detected) {
             transformed_pos = mapManager.transformToMap(bottom_center);
         }
 
         {
+            // 감지 결과 및 지도 좌표 반환
             std::lock_guard<std::mutex> lock(g_ai_mtx);
             g_person_detected = detected;
             g_person_map_pos = transformed_pos;

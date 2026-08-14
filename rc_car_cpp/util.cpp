@@ -34,7 +34,7 @@ std::string makePhotoFilename() {
 
 cv::Mat makeDisplay(const cv::Mat& frame, double measuredFps, const Bno055::Tilt& tilt, const UartDevice::gpsdata& gpsdata, double speedSetting, double driveCommand, double steeringAngle)
 {
-    constexpr int INFO_HEIGHT = 140;
+    const int INFO_HEIGHT = 140;
 
     cv::Mat display(frame.rows + INFO_HEIGHT, frame.cols, frame.type(), cv::Scalar(255, 255, 255));
 

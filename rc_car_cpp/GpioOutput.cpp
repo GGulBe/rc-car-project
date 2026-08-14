@@ -34,4 +34,3 @@ void GpioOutput::setLevel(bool value) { // 해당 핀 밸류에 전압 조정 �
     values.bits = value ? 1 : 0;
     if (::ioctl(lineFd_, GPIO_V2_LINE_SET_VALUES_IOCTL, &values) < 0) throw systemError("Failed to set GPIO output");
 }
-

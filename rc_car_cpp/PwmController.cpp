@@ -55,4 +55,3 @@ void PwmController::setTimer(int timer, std::uint16_t prescalerRegisterValue, st
 
     periods_.at(static_cast<std::size_t>(timer)) = period;
 }
-

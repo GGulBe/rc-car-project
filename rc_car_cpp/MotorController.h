@@ -22,8 +22,8 @@ private:
     GpioOutput motor1Direction_;
     GpioOutput motor2Direction_;
 
-    static constexpr int PWM_LEFT_CHANNEL = 13;
-    static constexpr int PWM_RIGHT_CHANNEL = 12;
+    static const int PWM_LEFT_CHANNEL = 13;
+    static const int PWM_RIGHT_CHANNEL = 12;
 
     double commandPercent_ = 0.0;
 };

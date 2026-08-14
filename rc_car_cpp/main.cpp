@@ -1,14 +1,8 @@
-#include <cerrno>
-#include <cstring>
 #include <opencv2/opencv.hpp>
 #include <chrono>
-#include <ctime>
-#include <iomanip>
-#include <sstream>
 #include <string>
 #include <iostream>
 #include <stdexcept>
-#include <cmath>
 #include <algorithm>
 #include <atomic>
 #include <thread>
@@ -24,18 +18,20 @@
 #include "Bno055.h"
 #include "UartDevice.h"
 #include "GPSWorker.h"
+#include "MapManager.h"
+#include "CalibrationWorker.h"
 
-constexpr double P0_CENTER = -80.0;
-constexpr double P1_CENTER = 0.0;
-constexpr double P2_CENTER = -75.0;
-constexpr double P0_MIN = -140.0;
-constexpr double P0_MAX = 20.0;
-constexpr double P1_MIN = -35.0;
-constexpr double P1_MAX = 65.0;
-constexpr double P2_MIN = -100.0;
-constexpr double P2_MAX = -50.0;
-constexpr double CAMERA_STEP = 5.0;
-constexpr double STEERING_STEP = 1.0;
+const double P0_CENTER = -80.0;
+const double P1_CENTER = 0.0;
+const double P2_CENTER = -75.0;
+const double P0_MIN = -140.0;
+const double P0_MAX = 20.0;
+const double P1_MIN = -35.0;
+const double P1_MAX = 65.0;
+const double P2_MIN = -100.0;
+const double P2_MAX = -50.0;
+const double CAMERA_STEP = 5.0;
+const double STEERING_STEP = 1.0;
 
 int main() {
     try {
@@ -47,53 +43,85 @@ int main() {
         Bno055 imu(bno055I2c);
         UartDevice gps;
         TerminalInput keyboard;
-        
-        std::atomic<bool> running{true};
-
-        std::thread gpsThread(gpsWorker, std::ref(gps), std::ref(running));
 
         servos.setCalibration(2, { P2_MIN, P2_MAX});
-
         servos.setAngle(2, P2_CENTER);
         motors.stop();
 
-        //카메라 해상도와 FPS 설정
-        constexpr int width = 320;
-        constexpr int height = 240;
-        constexpr int targetFps = 30;
+        std::atomic<bool> running{true};
+        std::thread gpsThread(gpsWorker, std::ref(gps), std::ref(running));
 
-        //카메라 객체 생성
-        cv::VideoCapture camera(makePipeline(width, height, targetFps),cv::CAP_GSTREAMER);
+        const int width = 320;
+        const int height = 240;
+        const int targetFps = 30;
+
+        cv::VideoCapture camera(makePipeline(width, height, targetFps), cv::CAP_GSTREAMER);
         if (!camera.isOpened()) {
             std::cerr << "GStreamer camera open failed. Trying V4L2 index 0.\n";
             camera.open(0, cv::CAP_V4L2);
         }
         if (!camera.isOpened()) throw systemError("Failed to open Raspberry Pi camera");
 
-        double steeringAngle = P2_CENTER;
+        // MapManager 파트( 호모그래피 , 캘리브레이션 수행 )
+        MapManager mapManager("map.jpg");
+
+        cv::Mat map_image = cv::imread("map.jpg");
+        if (map_image.empty()) throw std::runtime_error("map.jpg 이미지 파일을 찾을 수 없습니다!");
+        
+        // 1. 먼저 지도 창을 띄워서 4개 클릭
+        std::vector<cv::Point2f> map_points = getCalibrationPoints(map_image, "Calibration: Click 4 Points on Map");
+
+        cv::Mat cam_frame;
+        int retry_count = 0;
+        while (retry_count < 10) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            camera.read(cam_frame);
+            if (!cam_frame.empty()) break;
+            retry_count++;
+        }
+        if (cam_frame.empty()) throw std::runtime_error("카메라 프레임을 읽어오지 못했습니다!");
+
+        // 2. 지도 클릭이 끝나면 카메라 창을 띄워서 4개 클릭
+        std::vector<cv::Point2f> video_points = getCalibrationPoints(cam_frame, "Calibration: Click 4 Points on Camera (320x240)");
+
+        mapManager.setHomography(video_points, map_points);
+        std::cout << "✨ 320x240 카메라 및 map.jpg 호모그래피 캘리브레이션 완료!" << std::endl;
+        // 객체 탐지 및 좌표 변환 스레드 생성하면서 분리
+        std::thread ai_thread([](MapManager& mgr) {
+            try {
+                aiAndTransformThread("results4_fixed.onnx", mgr);
+            } catch (const std::exception& e) {
+                std::cerr << " AI 스레드 예외 발생: " << e.what() << std::endl;
+            }
+        }, std::ref(mapManager));
+
         double speedSetting = 30.0;
         double driveCommand = 0.0;
+        double steeringAngle = P2_CENTER;
 
        
         cv::Mat frame;
         int frameCounter = 0;
         double measuredFps = 0.0;
         auto fpsStart = std::chrono::steady_clock::now();
-        
-        cv::namedWindow("Robot Camera Control", cv::WINDOW_AUTOSIZE);
+
+        cv::namedWindow("Robot Camera Control", cv::WINDOW_AUTOSIZE); // RC CAR 카메라
+        cv::namedWindow("RC Car Real-time Monitoring", cv::WINDOW_AUTOSIZE); // 위성 지도
         std::cout << "Keyboard input is read from this terminal. Press W/A/S/D without Enter.\n";
 
         while (running.load()) {
-
             UartDevice::gpsdata gpsdata;
-
             {
                 std::lock_guard<std::mutex> lock(gpsMutex);
                 gpsdata = latestGps;
             }
 
-
             if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
+            {
+                std::lock_guard<std::mutex> lock(g_ai_mtx);
+                g_latest_frame = frame.clone();
+            }
+
             ++frameCounter;
             const auto now = std::chrono::steady_clock::now();
             const double elapsed = std::chrono::duration<double>(now - fpsStart).count();
@@ -104,9 +132,24 @@ int main() {
             }
 
             Bno055::Tilt tilt = imu.readMotion();
-             
+
             cv::Mat display = makeDisplay(frame, measuredFps, tilt, gpsdata, speedSetting, driveCommand, steeringAngle);
             cv::imshow("Robot Camera Control", display);
+
+            bool current_detected;
+            cv::Point2f current_map_pos;
+            {
+                std::lock_guard<std::mutex> lock(g_ai_mtx);
+                current_detected = g_person_detected;
+                current_map_pos = g_person_map_pos;
+            }
+
+            double current_lat = gpsdata.gpsfix ? gpsdata.lat : 37.58635; 
+            double current_lon = gpsdata.gpsfix ? gpsdata.lon : 127.09746; 
+
+            // 위성 지도에 rc카 및 사람 마킹
+            cv::Mat display_map = mapManager.drawMarkers(current_lat, current_lon, current_detected, current_map_pos);
+            cv::imshow("RC Car Real-time Monitoring", display_map);
 
             const int windowKey = cv::waitKey(1);
             int key = keyboard.readKey(0);
@@ -151,7 +194,6 @@ int main() {
                     motors.drive(driveCommand);
                 }
             }
-            //방향 제어 중립
             else if (key == 'r' || key == 'R') {
                 steeringAngle = P2_CENTER;
                 servos.setAngle(2, steeringAngle);
@@ -161,18 +203,27 @@ int main() {
             }
         }
 
+        running = false;
+        g_ai_running = false;
+        
         motors.stop();
         servos.setAngle(2, P2_CENTER);
         camera.release();
         cv::destroyAllWindows();
-        running = false;
 
-        gpsThread.join();
+        if (gpsThread.joinable()) {
+            gpsThread.join();
+        }
+
+        if (ai_thread.joinable()) {
+            ai_thread.join(); 
+        }
 
         return 0;
     }
-    catch (const cv::Exception& error) {
-        std::cerr << "OpenCV error: " << error.what() << '\n';
+
+    catch (const std::exception& error) {
+        std::cerr << "Error: " << error.what() << '\n';
         return 1;
     }
 }

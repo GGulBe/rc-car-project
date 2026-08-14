@@ -186,6 +186,7 @@ def evaluate_detections(
     amp_enabled: bool,
     postprocessor: DetectionPostProcessor,
     operating_score_threshold: float,
+    image_size: tuple[int, int] = (320, 240),
 ) -> dict[str, float | int]:
     model.eval()
     evaluator = DetectionEvaluator(operating_score_threshold)
@@ -193,7 +194,7 @@ def evaluate_detections(
         images = move_images(images, device)
         with autocast_context(device, amp_enabled):
             predictions = model(images)
-        detections = postprocessor(predictions, image_size=(320, 240))
+        detections = postprocessor(predictions, image_size=image_size)
         evaluator.update(detections, targets)
     metrics = evaluator.compute()
     flattened: dict[str, float | int] = {}
@@ -266,26 +267,61 @@ def load_checkpoint(
     )
 
 
+def load_model_weights(
+    path: Path,
+    model: PersonDetector,
+    device: torch.device,
+) -> dict[str, Any]:
+    """Load model parameters only and intentionally reset training state.
+
+    Resolution curricula must not restore the previous stage's optimizer,
+    scheduler, scaler, epoch, or best score.  The convolutional detector has
+    resolution-independent parameter shapes, so the state dict can be reused
+    when moving from 640/480 inputs back to the final 320x240 input.
+    """
+
+    checkpoint = torch.load(path, map_location=device, weights_only=False)
+    if isinstance(checkpoint, dict) and "model" in checkpoint:
+        state_dict = checkpoint["model"]
+        metadata = {
+            "source_epoch": int(checkpoint.get("epoch", -1)),
+            "source_experiment": str(
+                checkpoint.get("config", {}).get("experiment_name", "unknown")
+            ),
+        }
+    elif isinstance(checkpoint, dict):
+        state_dict = checkpoint
+        metadata = {"source_epoch": -1, "source_experiment": "raw_state_dict"}
+    else:
+        raise TypeError(f"Unsupported weights payload in {path}")
+    model.load_state_dict(state_dict, strict=True)
+    return metadata
+
+
 def run_training(
     root: Path,
     config: dict[str, Any],
     resume_path: Path | None = None,
-) -> None:
+    initial_weights_path: Path | None = None,
+) -> dict[str, Any]:
+    if resume_path is not None and initial_weights_path is not None:
+        raise ValueError("resume_path and initial_weights_path are mutually exclusive")
     seed_everything(int(config["seed"]))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     amp_enabled = bool(config["amp"]) and device.type == "cuda"
     dataset_dir = root / "data" / "processed" / "v1_grouped"
+    image_size = (int(config["image_width"]), int(config["image_height"]))
     train_dataset = PersonDetectionDataset(
         dataset_dir,
         "train",
-        image_size=(int(config["image_width"]), int(config["image_height"])),
+        image_size=image_size,
         augment=True,
         horizontal_flip_probability=float(config["horizontal_flip_probability"]),
     )
     valid_dataset = PersonDetectionDataset(
         dataset_dir,
         "valid",
-        image_size=(int(config["image_width"]), int(config["image_height"])),
+        image_size=image_size,
         augment=False,
     )
     train_loader = create_loader(
@@ -352,10 +388,25 @@ def run_training(
         max_detections=int(config["max_detections"]),
     )
     start_epoch, best_map50_95, best_validation_loss = 1, -1.0, float("inf")
+    initialization: dict[str, Any] = {"mode": "fresh"}
     if resume_path is not None:
         start_epoch, best_map50_95, best_validation_loss = load_checkpoint(
             resume_path, model, optimizer, scheduler, scaler, device
         )
+        initialization = {"mode": "resume", "path": str(resume_path)}
+    elif initial_weights_path is not None:
+        metadata = load_model_weights(initial_weights_path, model, device)
+        initialization = {
+            "mode": "weights_only",
+            "path": str(initial_weights_path),
+            **metadata,
+        }
+
+    max_runtime_hours = float(config.get("max_runtime_hours", 0.0) or 0.0)
+    runtime_limit_seconds = (
+        max_runtime_hours * 3600.0 if max_runtime_hours > 0.0 else None
+    )
+    training_started = time.perf_counter()
 
     print("=" * 72)
     print("FULL TRAINING")
@@ -365,9 +416,18 @@ def run_training(
     print(f"train_images        : {len(train_dataset)}")
     print(f"valid_images        : {len(valid_dataset)}")
     print(f"batch_size          : {config['batch_size']}")
+    print(f"image_size          : {image_size[0]}x{image_size[1]}")
     print(f"amp_enabled         : {amp_enabled}")
     print(f"start_epoch         : {start_epoch}")
+    print(f"initialization      : {initialization['mode']}")
+    print(
+        f"max_runtime_hours   : {max_runtime_hours:.3f}"
+        if runtime_limit_seconds is not None
+        else "max_runtime_hours   : unlimited"
+    )
 
+    stop_reason = "epochs_complete"
+    last_completed_epoch = start_epoch - 1
     for epoch in range(start_epoch, int(config["epochs"]) + 1):
         epoch_start = time.perf_counter()
         if device.type == "cuda":
@@ -397,6 +457,7 @@ def run_training(
                 amp_enabled,
                 postprocessor,
                 float(config["operating_score_threshold"]),
+                image_size,
             )
         scheduler.step()
         elapsed = time.perf_counter() - epoch_start
@@ -480,5 +541,35 @@ def run_training(
         )
         for warning in warnings:
             print(f"WARNING: {warning}")
+        last_completed_epoch = epoch
+        if (
+            runtime_limit_seconds is not None
+            and time.perf_counter() - training_started >= runtime_limit_seconds
+        ):
+            if not (checkpoint_dir / "last.pt").is_file() or (
+                epoch % int(config["checkpoint_every"]) != 0
+            ):
+                atomic_torch_save(payload, checkpoint_dir / "last.pt")
+            stop_reason = "runtime_limit"
+            print(
+                f"TIME BUDGET REACHED after epoch {epoch}; "
+                "the last completed checkpoint is safe."
+            )
+            break
     if writer is not None:
         writer.close()
+    status = {
+        "experiment_name": str(config["experiment_name"]),
+        "stop_reason": stop_reason,
+        "last_completed_epoch": int(last_completed_epoch),
+        "requested_epochs": int(config["epochs"]),
+        "image_width": image_size[0],
+        "image_height": image_size[1],
+        "elapsed_hours": (time.perf_counter() - training_started) / 3600.0,
+        "best_map50_95": float(best_map50_95),
+        "initialization": initialization,
+    }
+    (experiment_dir / "training_status.json").write_text(
+        json.dumps(status, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return status

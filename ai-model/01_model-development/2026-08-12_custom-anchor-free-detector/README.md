@@ -117,6 +117,17 @@ python scripts/16_train.py --config configs/experiments/home_baseline_100e.json
 python scripts/16_train.py --config configs/experiments/home_baseline_100e.json --resume results/training/home_baseline_100e/checkpoints/last.pt
 ```
 
+2026-08-14 장시간 학습 코드에서는 다음 기능을 추가했습니다.
+
+- config의 `image_width`, `image_height`를 실제 학습·평가·decode에 적용
+- `--init-weights`로 optimizer/scheduler 상태 없이 model weight만 전달
+- `--max-runtime-hours`로 epoch 경계에서 안전 종료
+- `training_status.json`에 종료 원인·마지막 epoch·최고 mAP 기록
+- 480/640 사전학습 후 최종 320×240 미세조정 자동 전환
+- 비정상 종료 후 `last.pt` 자동 재개
+
+노트북별 최종 계획은 `plans/longrun_final`, 단계별 설정은 `configs/longrun_final`에 있습니다.
+
 학교 GPU 5대의 실험 배정과 정확한 명령은 [`01_노트북별_실험배정.txt`](01_노트북별_실험배정.txt)에 정리했습니다.
 
 ## 6개 실험의 목적
@@ -174,3 +185,5 @@ MX570 A 4GB, 전체 Train/Valid 데이터, AMP, batch 4 기준입니다.
   - 공통 48 epoch 및 최고 checkpoint 비교
   - 중단 원인과 AMP gradient overflow 해석
   - FPN48 중심의 2차 6대 병렬 실험 설계와 시작 상태
+- [2026-08-14: Round 2 7개 분석과 Round 3 설정](../../02_training-experiments/2026-08-14_round2-seven-run-analysis-and-round3-search/README.md)
+- [2026-08-14: Round 3 30-epoch 결과와 연휴 장시간 6대 계획](../../02_training-experiments/2026-08-14_round3-30epoch-screening-and-longrun-plan/README.md)

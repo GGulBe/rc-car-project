@@ -1,15 +1,9 @@
-#include <cerrno>
-#include <cstring>
 #include <opencv2/opencv.hpp>
 #include <opencv2/dnn.hpp>
 #include <chrono>
-#include <ctime>
-#include <iomanip>
-#include <sstream>
 #include <string>
 #include <iostream>
 #include <stdexcept>
-#include <cmath>
 #include <algorithm>
 #include <thread>
 #include <mutex>
@@ -23,8 +17,14 @@
 #include "util.h"
 #include "Bno055.h"
 #include "UartDevice.h"
+<<<<<<< Updated upstream
 #include "MapManager.h"
 #include "Detector.h"
+=======
+#include "GPSWorker.h"
+#include "MapManager.h"
+#include "CalibrationWorker.h"
+>>>>>>> Stashed changes
 
 constexpr double P0_CENTER = -80.0;
 constexpr double P1_CENTER = 0.0;
@@ -150,6 +150,12 @@ int main() {
         MotorController motors(pwm);
 
         Bno055 imu(bno055I2c);
+<<<<<<< Updated upstream
+=======
+        UartDevice gps;
+        TerminalInput keyboard;
+
+>>>>>>> Stashed changes
         imu.initialize();
 
         servos.setCalibration(0, { P0_MIN, P0_MAX});
@@ -161,10 +167,17 @@ int main() {
         servos.setAngle(2, P2_CENTER);
         motors.stop();
 
+<<<<<<< Updated upstream
+=======
+        std::atomic<bool> running{true};
+        std::thread gpsThread(gpsWorker, std::ref(gps), std::ref(running));
+
+>>>>>>> Stashed changes
         constexpr int width = 320;
         constexpr int height = 240;
         constexpr int targetFps = 30;
 
+<<<<<<< Updated upstream
         // V4L2 방식으로 카메라 열기
         cv::VideoCapture camera(0, cv::CAP_V4L2);
         camera.set(cv::CAP_PROP_FRAME_WIDTH, width);
@@ -208,12 +221,48 @@ int main() {
         double steeringAngle = P2_CENTER;
         double cameraPan = P0_CENTER;
         double cameraTilt = P1_CENTER;
+=======
+        cv::VideoCapture camera(makePipeline(width, height, targetFps), cv::CAP_GSTREAMER);
+        if (!camera.isOpened()) {
+            std::cerr << "GStreamer camera open failed. Trying V4L2 index 0.\n";
+            camera.open(0, cv::CAP_V4L2);
+        }
+        if (!camera.isOpened()) throw systemError("Failed to open Raspberry Pi camera");
+
+        MapManager mapManager("map_3.jpg");
+
+        cv::Mat map_image = cv::imread("map_3.jpg");
+        if (map_image.empty()) throw std::runtime_error("map_3.jpg 이미지 파일을 찾을 수 없습니다!");
+        std::vector<cv::Point2f> map_points = getCalibrationPoints(map_image, "Calibration: Click 4 Points on Map");
+
+        cv::Mat cam_frame;
+        int retry_count = 0;
+        while (retry_count < 10) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            camera.read(cam_frame);
+            if (!cam_frame.empty()) break;
+            retry_count++;
+        }
+        if (cam_frame.empty()) throw std::runtime_error("카메라 프레임을 읽어오지 못했습니다!");
+        std::vector<cv::Point2f> video_points = getCalibrationPoints(cam_frame, "Calibration: Click 4 Points on Camera (320x240)");
+
+        mapManager.setHomography(video_points, map_points);
+        std::cout << "✨ 320x240 카메라 및 map_3.jpg 호모그래피 캘리브레이션 완료!" << std::endl;
+
+        std::thread ai_thread(aiAndTransformThread, "person_detector_v2_best_int8.onnx", std::ref(mapManager));
+        ai_thread.detach();
+
+        double speedSetting = 30.0;
+        double driveCommand = 0.0;
+        double steeringAngle = P2_CENTER;
+>>>>>>> Stashed changes
 
         cv::Mat frame;
         int frameCounter = 0;
         double measuredFps = 0.0;
         auto fpsStart = std::chrono::steady_clock::now();
 
+<<<<<<< Updated upstream
         TerminalInput keyboard;
         cv::namedWindow("Robot Camera Control", cv::WINDOW_AUTOSIZE);
         cv::namedWindow("RC Car Real-time Monitoring", cv::WINDOW_AUTOSIZE);
@@ -223,16 +272,35 @@ int main() {
         while (g_running) {
             if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
             
+=======
+        cv::namedWindow("Robot Camera Control", cv::WINDOW_AUTOSIZE);
+        cv::namedWindow("RC Car Real-time Monitoring", cv::WINDOW_AUTOSIZE);
+        std::cout << "Keyboard input is read from this terminal. Press W/A/S/D without Enter.\n";
+
+        while (running.load()) {
+            UartDevice::gpsdata gpsdata;
+>>>>>>> Stashed changes
             {
                 std::lock_guard<std::mutex> lock(g_mtx);
                 g_latest_frame = frame.clone();
             }
 
+<<<<<<< Updated upstream
             frameCounter++;
 
             const Bno055::Tilt tilt = imu.readMotion();
             std::cout << "heading : " << tilt.headingDeg << " roll : " << tilt.rollDeg << " pitch : " << tilt.pitchDeg << std::endl; 
             
+=======
+            if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
+            
+            {
+                std::lock_guard<std::mutex> lock(g_ai_mtx);
+                g_latest_frame = frame.clone();
+            }
+
+            ++frameCounter;
+>>>>>>> Stashed changes
             const auto now = std::chrono::steady_clock::now();
             const double elapsed = std::chrono::duration<double>(now - fpsStart).count();
             if (elapsed >= 1.0) {
@@ -273,8 +341,27 @@ int main() {
                 1                           // 두께
             );
 
+<<<<<<< Updated upstream
             cv::imshow("Robot Camera Control", display);
 
+=======
+            Bno055::Tilt tilt = imu.readMotion();
+
+            cv::Mat display = makeDisplay(frame, measuredFps, tilt, gpsdata, speedSetting, driveCommand, steeringAngle);
+            cv::imshow("Robot Camera Control", display);
+
+            bool current_detected;
+            cv::Point2f current_map_pos;
+            {
+                std::lock_guard<std::mutex> lock(g_ai_mtx);
+                current_detected = g_person_detected;
+                current_map_pos = g_person_map_pos;
+            }
+
+            double current_lat = gpsdata.gpsfix ? gpsdata.lat : 37.58635; 
+            double current_lon = gpsdata.gpsfix ? gpsdata.lon : 127.09746; 
+
+>>>>>>> Stashed changes
             cv::Mat display_map = mapManager.drawMarkers(current_lat, current_lon, current_detected, current_map_pos);
             cv::imshow("RC Car Real-time Monitoring", display_map);
 
@@ -343,11 +430,14 @@ int main() {
                     motors.drive(driveCommand);
                 }
             }
+<<<<<<< Updated upstream
             else if (key == 'p' || key == 'P') {
                 const std::string filename = makePhotoFilename();
                 if (cv::imwrite(filename, frame)) std::cout << "Saved: " << filename << '\n';
                 else std::cerr << "Failed to save image\n";
             }
+=======
+>>>>>>> Stashed changes
             else if (key == 'r' || key == 'R') {
                 driveCommand = 0.0;
                 steeringAngle = P2_CENTER;
@@ -364,11 +454,24 @@ int main() {
             }
         }
 
+<<<<<<< Updated upstream
         g_running = false;
+=======
+        running = false;
+        g_ai_running = false;
+>>>>>>> Stashed changes
         motors.stop();
         servos.setAngle(2, P2_CENTER);
         camera.release();
         cv::destroyAllWindows();
+<<<<<<< Updated upstream
+=======
+
+        if (gpsThread.joinable()) {
+            gpsThread.join();
+        }
+
+>>>>>>> Stashed changes
         return 0;
     }
     catch (const cv::Exception& error) {

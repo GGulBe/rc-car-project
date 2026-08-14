@@ -1,3 +1,4 @@
+// 캘리브레이션 및 멀티스레드
 #include "CalibrationWorker.h"
 #include "Detector.h"
 #include <iostream>

@@ -1,3 +1,4 @@
+// 위성지도 관리 및 호모그래피
 #include "MapManager.h"
 
 MapManager::MapManager(const std::string& map_path) {

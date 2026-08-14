@@ -1,3 +1,4 @@
+// 객체 감지 (추후 수정)
 #include "Detector.h"
 #include <iostream>
 #include <vector>

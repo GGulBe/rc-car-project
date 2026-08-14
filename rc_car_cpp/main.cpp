@@ -99,6 +99,7 @@ int main() {
         double driveCommand = 0.0;
         double steeringAngle = P2_CENTER;
 
+       
         cv::Mat frame;
         int frameCounter = 0;
         double measuredFps = 0.0;
@@ -116,7 +117,6 @@ int main() {
             }
 
             if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
-            
             {
                 std::lock_guard<std::mutex> lock(g_ai_mtx);
                 g_latest_frame = frame.clone();

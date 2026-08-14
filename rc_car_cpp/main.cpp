@@ -91,7 +91,6 @@ int main() {
                 std::cerr << " AI 스레드 예외 발생: " << e.what() << std::endl;
             }
         }, std::ref(mapManager));
-        ai_thread.detach();
 
         double speedSetting = 30.0;
         double driveCommand = 0.0;
@@ -203,6 +202,7 @@ int main() {
 
         running = false;
         g_ai_running = false;
+        
         motors.stop();
         servos.setAngle(2, P2_CENTER);
         camera.release();
@@ -212,11 +212,15 @@ int main() {
             gpsThread.join();
         }
 
+        if (ai_thread.joinable()) {
+            ai_thread.join(); 
+        }
+
         return 0;
     }
 
-    catch (const cv::Exception& error) {
-        std::cerr << "OpenCV error: " << error.what() << '\n';
+    catch (const std::exception& error) {
+        std::cerr << "Error: " << error.what() << '\n';
         return 1;
     }
 }

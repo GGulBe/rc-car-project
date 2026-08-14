@@ -128,6 +128,18 @@ python scripts/16_train.py --config configs/experiments/home_baseline_100e.json 
 
 노트북별 최종 계획은 `plans/longrun_final`, 단계별 설정은 `configs/longrun_final`에 있습니다.
 
+집 노트북 최종 성능 탐색에는 다음 안전장치를 추가했습니다.
+
+- `results.14`의 last checkpoint는 동일 config로 epoch 100까지만 정확히 resume
+- learning rate를 바꾸는 다음 단계는 `--init-weights`로 model weight만 전달
+- 각 단계 완료 후 이전 모든 후보를 다시 비교해 전역 최고 checkpoint 선택
+- checkpoint epoch 이후의 중복 history를 정리하고 config 일치 여부 검사
+- 단계별 시간 상한과 자동 재시도, 같은 명령으로 중단 복구
+
+실행기는 `scripts/28_run_home_final_search.py`, 결과 요약은 `scripts/29_summarize_home_final_search.py`, 설정은 `configs/home_final`, 계획은 `plans/home_final_search.json`에 있습니다.
+
+GitHub checkout의 `home_final_search.json`은 중복 checkpoint를 만들지 않도록 `02_training-experiments/2026-08-14_home-final-performance-search/reference/results14_seed11`을 출발점으로 참조합니다. USB 전달용 독립 패키지는 같은 파일을 자체 `seeds/results14_seed11`에 포함합니다.
+
 학교 GPU 5대의 실험 배정과 정확한 명령은 [`01_노트북별_실험배정.txt`](01_노트북별_실험배정.txt)에 정리했습니다.
 
 ## 6개 실험의 목적
@@ -187,3 +199,4 @@ MX570 A 4GB, 전체 Train/Valid 데이터, AMP, batch 4 기준입니다.
   - FPN48 중심의 2차 6대 병렬 실험 설계와 시작 상태
 - [2026-08-14: Round 2 7개 분석과 Round 3 설정](../../02_training-experiments/2026-08-14_round2-seven-run-analysis-and-round3-search/README.md)
 - [2026-08-14: Round 3 30-epoch 결과와 연휴 장시간 6대 계획](../../02_training-experiments/2026-08-14_round3-30epoch-screening-and-longrun-plan/README.md)
+- [2026-08-14: results.7 장기 추세와 results.14 기반 홈 최종 성능 탐색](../../02_training-experiments/2026-08-14_home-final-performance-search/README.md)

@@ -6,7 +6,7 @@ RC카의 Raspberry Pi에서 사람을 실시간으로 감지하기 위한 AI 파
 >
 > **최근 수치:** validation mAP50:95 `0.253238`, F1@0.25 `0.580548`, small-person recall `0.453307`
 >
-> **2026-08-14 상태:** Round 3 6개를 28~32 epoch에서 선별 완료. FPN48/exp2.0/box2.0/radius1.5를 주력으로 확정하고 연휴 장시간 6대 학습 계획 검증 완료
+> **2026-08-14 상태:** Round 3에서 FPN48/exp2.0/box2.0/radius1.5를 주력으로 확정. 학교 장시간 6대 학습과 results.14 기반 집 노트북 3단계 최종 성능 탐색을 병렬 진행
 >
 > **배포 기준선:** 기존 `results.4` ONNX/INT8을 유지. `results.14`는 아직 ONNX 변환·Raspberry Pi 객체 감지 시험 전
 >
@@ -22,6 +22,7 @@ RC카의 Raspberry Pi에서 사람을 실시간으로 감지하기 위한 AI 파
 | 6대 노트북 1차 실험 결과와 선택 근거 | [`02_training-experiments/2026-08-13_round1-six-laptop-study`](02_training-experiments/2026-08-13_round1-six-laptop-study/) |
 | Round 2 7개 결과와 Round 3 최종 성능 탐색 | [`02_training-experiments/2026-08-14_round2-seven-run-analysis-and-round3-search`](02_training-experiments/2026-08-14_round2-seven-run-analysis-and-round3-search/) |
 | Round 3 30-epoch 결과와 연휴 장시간 6대 배치 | [`02_training-experiments/2026-08-14_round3-30epoch-screening-and-longrun-plan`](02_training-experiments/2026-08-14_round3-30epoch-screening-and-longrun-plan/) |
+| results.7 장기 추세와 results.14 기반 홈 최종 탐색 | [`02_training-experiments/2026-08-14_home-final-performance-search`](02_training-experiments/2026-08-14_home-final-performance-search/) |
 | 날짜별 INT8 경량화 모델 전체와 변화·비교 | [`03_lightweight-deployment/2026-08-13_int8-model-evolution-and-finalists`](03_lightweight-deployment/2026-08-13_int8-model-evolution-and-finalists/) |
 | Raspberry Pi에서 바로 시험할 최신 모델 | [`03_lightweight-deployment/2026-08-13_results4-pi-model-variants`](03_lightweight-deployment/2026-08-13_results4-pi-model-variants/) |
 | Raspberry Pi 1차 카메라 실측 기록 | [`03_lightweight-deployment/2026-08-12_raspberry-pi-first-benchmark`](03_lightweight-deployment/2026-08-12_raspberry-pi-first-benchmark/) |
@@ -79,6 +80,8 @@ RGB 320×240
 | 2026-08-14 | Round 3 최종 병렬 탐색 | FPN48 exp2.0/2.5 재현성, box weight 2.5, center radius 2.0을 100-epoch 스케줄로 6대에서 비교 |
 | 2026-08-14 | Round 3 약 30-epoch 선별 완료 | results.14 mAP50:95 0.253238. exp2.5·box2.5·radius2.0을 장시간 주력에서 제외 |
 | 2026-08-14 | 연휴 장시간 학습 6대 확정 | 320×240 3대, 480→320 1대, 640→320 2대. 96시간 제한·매 epoch 저장·자동 복구 검증 |
+| 2026-08-14 | 집 results.7 epoch 87 분석 | epoch 62 이후 25 epoch 동안 최고점 미갱신, mAP 0.224346. plateau·과적합 경향으로 종료 결정 |
+| 2026-08-14 | 홈 최종 성능 탐색 자동화 | results.14를 기준으로 resume 70 epoch → LR 0.00025 40 epoch → LR 0.00010 24 epoch, 총 46시간 상한과 전역 최고 자동 선택 적용 |
 | 2026-08-14 | Raspberry Pi 객체 감지 시험 | 예정했지만 실시하지 못함. 오늘 날짜의 새 정확도·FPS·온도 결과 없음 |
 
 세부 수치와 선택 근거는 각 날짜 폴더의 `README.md`에서 확인할 수 있습니다.
@@ -91,6 +94,7 @@ RGB 320×240
 - results.4 인계본: [`04_team-integration/2026-08-13_results4-training-handoff`](04_team-integration/2026-08-13_results4-training-handoff/)
 - 최신 실험 설정과 부분 결과 회수법: [`02_training-experiments/2026-08-14_round2-seven-run-analysis-and-round3-search`](02_training-experiments/2026-08-14_round2-seven-run-analysis-and-round3-search/)
 - Round 3 결과와 장시간 실행 계획: [`02_training-experiments/2026-08-14_round3-30epoch-screening-and-longrun-plan`](02_training-experiments/2026-08-14_round3-30epoch-screening-and-longrun-plan/)
+- 집 노트북 최종 탐색 계획·체크포인트·중단 복구 코드: [`02_training-experiments/2026-08-14_home-final-performance-search`](02_training-experiments/2026-08-14_home-final-performance-search/)
 
 ### Raspberry Pi에서 시험할 때
 
@@ -123,5 +127,6 @@ RGB 320×240
 - GitHub에 데이터셋은 포함하지 않습니다. 학습에는 별도의 `data/processed/v1_grouped`가 필요합니다.
 - 최종 후보가 결정되기 전까지 Test split을 반복 사용하지 않습니다.
 - `results.14`는 현재 Valid 최고 checkpoint이지만 아직 최종 모델이 아닙니다. 장시간 학습, ONNX 변환, grouped Valid 비교와 Raspberry Pi 시험 전까지 기존 `results.4` 배포본을 기준선으로 유지합니다.
+- 집 노트북의 새 단계는 `results.14` 원본 best/last를 보존한 채 실행합니다. LR 변경은 resume이 아니라 weights-only 초기화로 수행합니다.
 - 2026-08-14에는 새 Raspberry Pi 객체 감지 시험을 실시하지 않았으므로 이전 Pi 수치를 새 모델 성능으로 해석하지 않습니다.
 - self-contained 팀 전달본에는 재현 편의를 위해 일부 학습 코드가 중복 포함되어 있습니다.

@@ -88,7 +88,7 @@ int main() {
             try {
                 aiAndTransformThread("results4_fixed.onnx", mgr);
             } catch (const std::exception& e) {
-                std::cerr << "⚠️ [AI 경고] AI 스레드 예외 발생: " << e.what() << std::endl;
+                std::cerr << " AI 스레드 예외 발생: " << e.what() << std::endl;
             }
         }, std::ref(mapManager));
         ai_thread.detach();

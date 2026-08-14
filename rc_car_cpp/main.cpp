@@ -21,17 +21,17 @@
 #include "MapManager.h"
 #include "CalibrationWorker.h"
 
-constexpr double P0_CENTER = -80.0;
-constexpr double P1_CENTER = 0.0;
-constexpr double P2_CENTER = -75.0;
-constexpr double P0_MIN = -140.0;
-constexpr double P0_MAX = 20.0;
-constexpr double P1_MIN = -35.0;
-constexpr double P1_MAX = 65.0;
-constexpr double P2_MIN = -100.0;
-constexpr double P2_MAX = -50.0;
-constexpr double CAMERA_STEP = 5.0;
-constexpr double STEERING_STEP = 1.0;
+const double P0_CENTER = -80.0;
+const double P1_CENTER = 0.0;
+const double P2_CENTER = -75.0;
+const double P0_MIN = -140.0;
+const double P0_MAX = 20.0;
+const double P1_MIN = -35.0;
+const double P1_MAX = 65.0;
+const double P2_MIN = -100.0;
+const double P2_MAX = -50.0;
+const double CAMERA_STEP = 5.0;
+const double STEERING_STEP = 1.0;
 
 int main() {
     try {
@@ -44,23 +44,18 @@ int main() {
         UartDevice gps;
         TerminalInput keyboard;
 
-        imu.initialize();
 
-        servos.setCalibration(0, { P0_MIN, P0_MAX});
-        servos.setCalibration(1, { P1_MIN, P1_MAX });
         servos.setCalibration(2, { P2_MIN, P2_MAX});
 
-        servos.setAngle(0, P0_CENTER);
-        servos.setAngle(1, P1_CENTER);
         servos.setAngle(2, P2_CENTER);
         motors.stop();
 
         std::atomic<bool> running{true};
         std::thread gpsThread(gpsWorker, std::ref(gps), std::ref(running));
 
-        constexpr int width = 320;
-        constexpr int height = 240;
-        constexpr int targetFps = 30;
+        const int width = 320;
+        const int height = 240;
+        const int targetFps = 30;
 
         cv::VideoCapture camera(makePipeline(width, height, targetFps), cv::CAP_GSTREAMER);
         if (!camera.isOpened()) {

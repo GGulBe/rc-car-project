@@ -5,8 +5,8 @@
 #include <cmath>
 #include <thread>
 
-MotorController::MotorController(PwmController& pwm)
-    : pwm_(pwm), motor1Direction_(23, false), motor2Direction_(24, false) {
+MotorController::MotorController(PwmController& pwm) : pwm_(pwm), motor1Direction_(23, false), motor2Direction_(24, false) 
+{
     pwm_.configureMotorTimer();
     stop();
 }

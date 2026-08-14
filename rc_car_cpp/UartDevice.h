@@ -17,10 +17,12 @@ public:
     
     explicit UartDevice(const std::string& devicePath = "/dev/serial0");
     ~UartDevice();
+    
+    gpsdata parseRmc();
+private:
     std::string readRmc();
     std::string readLine();
-    gpsdata parseRmc(const std::string& line);
-private:
     int fd_ = -1;
     void configure();
+
 };

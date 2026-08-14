@@ -12,7 +12,7 @@ cv::Point2f g_person_map_pos(-1, -1);
 std::atomic<bool> g_ai_running{true};
 
 void mouseCallback(int event, int x, int y, int flags, void* userdata) {
-    flags = NULL;
+    flags = 0;
     if (event == cv::EVENT_LBUTTONDOWN) {
         ClickContext* ctx = reinterpret_cast<ClickContext*>(userdata);
         if (ctx->points.size() < 4) {

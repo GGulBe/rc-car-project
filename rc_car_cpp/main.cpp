@@ -63,10 +63,13 @@ int main() {
         if (!camera.isOpened()) throw systemError("Failed to open Raspberry Pi camera");
 
         // MapManager 파트( 호모그래피 , 캘리브레이션 수행 )
-        MapManager mapManager("map_3.jpg");
+        MapManager mapManager("map.jpg");
 
-        cv::Mat map_image = cv::imread("map_3.jpg");
-        if (map_image.empty()) throw std::runtime_error("map_3.jpg 이미지 파일을 찾을 수 없습니다!");
+        cv::Mat map_image = cv::imread("map.jpg");
+        if (map_image.empty()) throw std::runtime_error("map.jpg 이미지 파일을 찾을 수 없습니다!");
+        
+        // 1. 먼저 지도 창을 띄워서 4개 클릭
+        std::vector<cv::Point2f> map_points = getCalibrationPoints(map_image, "Calibration: Click 4 Points on Map");
 
         cv::Mat cam_frame;
         int retry_count = 0;
@@ -78,28 +81,11 @@ int main() {
         }
         if (cam_frame.empty()) throw std::runtime_error("카메라 프레임을 읽어오지 못했습니다!");
 
-        std::vector<cv::Point2f> map_points;
-        std::vector<cv::Point2f> video_points;
-
-        std::cout << "\n=== 지도와 카메라 창이 동시에 열립니다. 각각 대응점 4개씩 클릭해주세요! ===" << std::endl;
-
-        std::thread map_calib_thread([&map_image, &map_points]() {
-            map_points = getCalibrationPoints(map_image, "Calibration: Click 4 Points on Map");
-        });
-
-        video_points = getCalibrationPoints(cam_frame, "Calibration: Click 4 Points on Camera (320x240)");
-
-        if (map_calib_thread.joinable()) {
-            map_calib_thread.join();
-        }
-
-        if (map_points.size() < 4 || video_points.size() < 4) {
-            throw std::runtime_error("캘리브레이션 점 수집이 취소되었거나 4개가 채워지지 않았습니다!");
-        }
+        // 2. 지도 클릭이 끝나면 카메라 창을 띄워서 4개 클릭
+        std::vector<cv::Point2f> video_points = getCalibrationPoints(cam_frame, "Calibration: Click 4 Points on Camera (320x240)");
 
         mapManager.setHomography(video_points, map_points);
-        std::cout << "✨ 320x240 카메라 및 map_3.jpg 호모그래피 캘리브레이션 완료!" << std::endl;
-
+        std::cout << "✨ 320x240 카메라 및 map.jpg 호모그래피 캘리브레이션 완료!" << std::endl;
         // 객체 탐지 및 좌표 변환 스레드 생성하면서 분리
         std::thread ai_thread([](MapManager& mgr) {
             try {

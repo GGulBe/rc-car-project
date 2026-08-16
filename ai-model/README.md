@@ -8,11 +8,11 @@ RC카의 Raspberry Pi에서 사람을 실시간으로 감지하기 위한 AI 파
 >
 > **2026-08-14 상태:** Round 3에서 FPN48/exp2.0/box2.0/radius1.5를 주력으로 확정. 학교 장시간 6대 학습과 results.14 기반 집 노트북 3단계 최종 성능 탐색을 병렬 진행
 >
-> **배포 기준선:** 기존 `results.4` ONNX/INT8을 유지. `results.14`는 아직 ONNX 변환·Raspberry Pi 객체 감지 시험 전
+> **배포 검증 상태:** results.14와 results20 FP32/INT8 ONNX 정리 완료. 2026-08-16 현재 results20 노트북 카메라 검증과 FP32↔INT8 출력 불일치 원인 재검증 진행
 >
 > **최종 Test split:** 아직 사용하지 않음
 
-마지막 정리: **2026-08-14**
+마지막 정리: **2026-08-16**
 
 ## 처음 보는 사람을 위한 빠른 길찾기
 
@@ -24,7 +24,8 @@ RC카의 Raspberry Pi에서 사람을 실시간으로 감지하기 위한 AI 파
 | Round 3 30-epoch 결과와 연휴 장시간 6대 배치 | [`02_training-experiments/2026-08-14_round3-30epoch-screening-and-longrun-plan`](02_training-experiments/2026-08-14_round3-30epoch-screening-and-longrun-plan/) |
 | results.7 장기 추세와 results.14 기반 홈 최종 탐색 | [`02_training-experiments/2026-08-14_home-final-performance-search`](02_training-experiments/2026-08-14_home-final-performance-search/) |
 | 날짜별 INT8 경량화 모델 전체와 변화·비교 | [`03_lightweight-deployment/2026-08-13_int8-model-evolution-and-finalists`](03_lightweight-deployment/2026-08-13_int8-model-evolution-and-finalists/) |
-| Raspberry Pi에서 바로 시험할 최신 모델 | [`03_lightweight-deployment/2026-08-13_results4-pi-model-variants`](03_lightweight-deployment/2026-08-13_results4-pi-model-variants/) |
+| 현재 results20 카메라 검증 | [`03_lightweight-deployment/2026-08-16_results20-camera-validation`](03_lightweight-deployment/2026-08-16_results20-camera-validation/) |
+| Raspberry Pi 기존 시험 기준 | [`03_lightweight-deployment/2026-08-13_results4-pi-model-variants`](03_lightweight-deployment/2026-08-13_results4-pi-model-variants/) |
 | Raspberry Pi 1차 카메라 실측 기록 | [`03_lightweight-deployment/2026-08-12_raspberry-pi-first-benchmark`](03_lightweight-deployment/2026-08-12_raspberry-pi-first-benchmark/) |
 | 캘리브레이션 팀 입력·출력 규약 | [`04_team-integration/2026-08-12_calibration-interface-guide`](04_team-integration/2026-08-12_calibration-interface-guide/) |
 | results.4 체크포인트와 이어학습 방법 | [`04_team-integration/2026-08-13_results4-training-handoff`](04_team-integration/2026-08-13_results4-training-handoff/) |
@@ -82,7 +83,10 @@ RGB 320×240
 | 2026-08-14 | 연휴 장시간 학습 6대 확정 | 320×240 3대, 480→320 1대, 640→320 2대. 96시간 제한·매 epoch 저장·자동 복구 검증 |
 | 2026-08-14 | 집 results.7 epoch 87 분석 | epoch 62 이후 25 epoch 동안 최고점 미갱신, mAP 0.224346. plateau·과적합 경향으로 종료 결정 |
 | 2026-08-14 | 홈 최종 성능 탐색 자동화 | results.14를 기준으로 resume 70 epoch → LR 0.00025 40 epoch → LR 0.00010 24 epoch, 총 46시간 상한과 전역 최고 자동 선택 적용 |
-| 2026-08-14 | Raspberry Pi 객체 감지 시험 | 예정했지만 실시하지 못함. 오늘 날짜의 새 정확도·FPS·온도 결과 없음 |
+| 2026-08-14 | results.14 ONNX/INT8 정리 | FP32, INT8 MinMax, INT8 Percentile 변환본을 날짜별 배포 폴더로 정리 |
+| 2026-08-14 | Raspberry Pi 객체 감지 시험 | 예정했지만 실시하지 못함. 해당 날짜의 새 정확도·FPS·온도 결과 없음 |
+| 2026-08-16 | results20 카메라 검증 | FP32와 INT8 2종의 노트북 카메라 비교·진단 패키지 구성 |
+| 2026-08-16 | FP32↔INT8 이상 진단 | FP32와 INT8 검출 결과 불일치를 확인하여 preprocess·decode·raw output 재검증을 우선 과제로 지정 |
 
 세부 수치와 선택 근거는 각 날짜 폴더의 `README.md`에서 확인할 수 있습니다.
 

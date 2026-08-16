@@ -55,19 +55,28 @@ Final Deployment Selection
 - CPU / RAM
 - 발열
 
-## 2026-08-16 주의사항
+## 2026-08-16 최신 판단
 
-results20 카메라 진단에서 FP32와 INT8의 검출 동작이 크게 달라지는 이상 징후가 확인되었습니다.
+results20 노트북 카메라 재검증을 완료했습니다.
 
-따라서 현재 진단 결과만으로 INT8 정확도 보존 여부를 확정하지 않습니다.
+핵심 결론:
 
-다음 우선순위는 동일 프레임에서 다음 항목을 직접 비교하는 것입니다.
+- 최종 FP32 기준 checkpoint: `home_final_s1_continue_results14_to100`, epoch 35
+- validation mAP50:95: `0.2607381170`
+- PyTorch `best.pt` ↔ FP32 ONNX raw output 일치 확인 완료
+- 기존 `FP32 0 detection` 결과는 **사람이 없는 장면에서의 정상 결과**였음
+- 같은 무인 장면에서 INT8 MinMax/Percentile은 False Positive가 발생
+- 사람 포함 300프레임에서 Percentile의 FP32 보존율은 87.04%, MinMax는 84.26%
+- 두 INT8 모두 FP32보다 extra detection이 많음
+- Windows CPU에서는 FP32 약 182.53 FPS, INT8 약 98~101 FPS로 QDQ INT8이 오히려 느렸음
+- 이 속도 결과는 Raspberry Pi로 일반화하지 않고 Pi 실측으로 최종 결정
 
-1. preprocess
-2. raw output
-3. decode
-4. confidence threshold
-5. NMS
+현재 우선순위:
+
+1. **FP32 ONNX를 Primary로 유지**
+2. INT8 MinMax / Percentile은 Pi benchmark 후보로 유지
+3. Raspberry Pi 4 + OV5647에서 2 threads 기준 실측
+4. False Positive, Recall, End-to-End FPS, CPU/RAM, 발열 비교 후 최종 선택
 
 최신 검증:
 

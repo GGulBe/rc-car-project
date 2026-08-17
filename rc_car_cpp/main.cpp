@@ -20,6 +20,14 @@
 #include "GPSWorker.h"
 #include "MapManager.h"
 #include "CalibrationWorker.h"
+#include "Detector.h"
+
+// 💡 메인 루프에서 바운딩 박스를 공유받기 위한 전역 변수 추가
+extern std::mutex g_ai_mtx;
+extern bool g_person_detected;
+extern cv::Point2f g_person_map_pos;
+extern cv::Mat g_latest_frame;
+cv::Rect g_person_box(0, 0, 0, 0); // 감지된 박스 좌표 저장을 위한 변수
 
 const double P0_CENTER = -80.0;
 const double P1_CENTER = 0.0;
@@ -48,9 +56,6 @@ int main() {
         servos.setAngle(2, P2_CENTER);
         motors.stop();
 
-        std::atomic<bool> running{true};
-        std::thread gpsThread(gpsWorker, std::ref(gps), std::ref(running));
-
         const int width = 320;
         const int height = 240;
         const int targetFps = 30;
@@ -66,7 +71,7 @@ int main() {
         MapManager mapManager("map.jpg");
 
         cv::Mat map_image = cv::imread("map.jpg");
-        if (map_image.empty()) throw std::runtime_error("map.jpg 이미지 파일을 찾을 수 없습니다!");
+        if (map_image.empty()) throw std::runtime_error("map.jpg image file not found!");
         
         // 1. 먼저 지도 창을 띄워서 4개 클릭
         std::vector<cv::Point2f> map_points = getCalibrationPoints(map_image, "Calibration: Click 4 Points on Map");
@@ -79,19 +84,23 @@ int main() {
             if (!cam_frame.empty()) break;
             retry_count++;
         }
-        if (cam_frame.empty()) throw std::runtime_error("카메라 프레임을 읽어오지 못했습니다!");
+        if (cam_frame.empty()) throw std::runtime_error("Failed to read camera frame!");
 
         // 2. 지도 클릭이 끝나면 카메라 창을 띄워서 4개 클릭
         std::vector<cv::Point2f> video_points = getCalibrationPoints(cam_frame, "Calibration: Click 4 Points on Camera (320x240)");
 
         mapManager.setHomography(video_points, map_points);
-        std::cout << "✨ 320x240 카메라 및 map.jpg 호모그래피 캘리브레이션 완료!" << std::endl;
+        std::cout << "320x240 Camera and map.jpg homography calibration completed!" << std::endl;
+
+        std::atomic<bool> running{true};
+        std::thread gpsThread(gpsWorker, std::ref(gps), std::ref(running));
+
         // 객체 탐지 및 좌표 변환 스레드 생성하면서 분리
         std::thread ai_thread([](MapManager& mgr) {
             try {
                 aiAndTransformThread("results4_fixed.onnx", mgr);
             } catch (const std::exception& e) {
-                std::cerr << " AI 스레드 예외 발생: " << e.what() << std::endl;
+                std::cerr << "AI thread exception occurred: " << e.what() << std::endl;
             }
         }, std::ref(mapManager));
 
@@ -99,7 +108,6 @@ int main() {
         double driveCommand = 0.0;
         double steeringAngle = P2_CENTER;
 
-       
         cv::Mat frame;
         int frameCounter = 0;
         double measuredFps = 0.0;
@@ -117,9 +125,28 @@ int main() {
             }
 
             if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
+            
             {
                 std::lock_guard<std::mutex> lock(g_ai_mtx);
                 g_latest_frame = frame.clone();
+            }
+
+            // AI 감지 상태, 지도 위치 및 박스 정보 가져오기
+            bool current_detected;
+            cv::Point2f current_map_pos;
+            cv::Rect current_box;
+            {
+                std::lock_guard<std::mutex> lock(g_ai_mtx);
+                current_detected = g_person_detected;
+                current_map_pos = g_person_map_pos;
+                current_box = g_person_box; // 💡 박스 좌표 동기화
+            }
+
+            // 💡 사람이 감지되었다면 카메라 화면(frame)에 초록색 바운딩 박스와 텍스트 그리기
+            if (current_detected) {
+                cv::rectangle(frame, current_box, cv::Scalar(0, 255, 0), 2);
+                cv::putText(frame, "DETECTED PERSON", cv::Point(current_box.x, std::max(current_box.y - 5, 15)), 
+                            cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
             }
 
             ++frameCounter;
@@ -135,14 +162,6 @@ int main() {
 
             cv::Mat display = makeDisplay(frame, measuredFps, tilt, gpsdata, speedSetting, driveCommand, steeringAngle);
             cv::imshow("Robot Camera Control", display);
-
-            bool current_detected;
-            cv::Point2f current_map_pos;
-            {
-                std::lock_guard<std::mutex> lock(g_ai_mtx);
-                current_detected = g_person_detected;
-                current_map_pos = g_person_map_pos;
-            }
 
             double current_lat = gpsdata.gpsfix ? gpsdata.lat : 37.58635; 
             double current_lon = gpsdata.gpsfix ? gpsdata.lon : 127.09746; 

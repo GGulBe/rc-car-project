@@ -9,6 +9,7 @@ std::mutex g_ai_mtx;
 cv::Mat g_latest_frame;
 bool g_person_detected = false;
 cv::Point2f g_person_map_pos(-1, -1);
+extern cv::Rect g_person_box; // main.cpp에 정의된 변수를 공유해서 쓴다고 선언
 std::atomic<bool> g_ai_running{true};
 
 void mouseCallback(int event, int x, int y, int flags, void* userdata) {
@@ -27,6 +28,7 @@ void mouseCallback(int event, int x, int y, int flags, void* userdata) {
         }
     }
 }
+
 // 마우스 클릭하여 캘리브레이션 진행
 std::vector<cv::Point2f> getCalibrationPoints(cv::Mat& img, const std::string& win_name) {
     ClickContext context;
@@ -69,8 +71,10 @@ void aiAndTransformThread(const std::string& model_path, MapManager& mapManager)
         }
 
         cv::Point2f bottom_center(0, 0);
-        // 사람 감지 및 bottom_center좌표 받는 함수
-        bool detected = detector.detectPerson(target_frame, bottom_center);
+        cv::Rect detected_box; 
+        
+        // 사람 감지 및 bottom_center 좌표와 박스 좌표를 함께 받는 함수 호출
+        bool detected = detector.detectPerson(target_frame, bottom_center, detected_box);
 
         cv::Point2f transformed_pos(-1, -1);
         // 사람이 감지 되면 호모그래피로 계산하여 좌표변환
@@ -79,10 +83,11 @@ void aiAndTransformThread(const std::string& model_path, MapManager& mapManager)
         }
 
         {
-            // 감지 결과 및 지도 좌표 반환
+            // 감지 결과, 지도 좌표 및 💡 바운딩 박스 좌표 전역 변수 동기화
             std::lock_guard<std::mutex> lock(g_ai_mtx);
             g_person_detected = detected;
             g_person_map_pos = transformed_pos;
+            g_person_box = detected_box; 
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(20));

@@ -43,8 +43,10 @@ const double P2_MAX = -50.0;
 const double CAMERA_STEP = 5.0;
 const double STEERING_STEP = 1.0;
 
-int main() {
-    try {
+int main()
+{
+    try
+    {
         I2cDevice i2c(0x14);
         I2cDevice bno055I2c(0x28);
         PwmController pwm(i2c);
@@ -54,7 +56,7 @@ int main() {
         UartDevice gps;
         TerminalInput keyboard;
 
-        servos.setCalibration(2, { P2_MIN, P2_MAX});
+        servos.setCalibration(2, {P2_MIN, P2_MAX});
         servos.setAngle(2, P2_CENTER);
         motors.stop();
 
@@ -63,31 +65,38 @@ int main() {
         const int targetFps = 30;
 
         cv::VideoCapture camera(makePipeline(width, height, targetFps), cv::CAP_GSTREAMER);
-        if (!camera.isOpened()) {
+        if (!camera.isOpened())
+        {
             std::cerr << "GStreamer camera open failed. Trying V4L2 index 0.\n";
             camera.open(0, cv::CAP_V4L2);
         }
-        if (!camera.isOpened()) throw systemError("Failed to open Raspberry Pi camera");
+        if (!camera.isOpened())
+            throw systemError("Failed to open Raspberry Pi camera");
 
         MapManager mapManager;
-        if (!mapManager.loadMap("map.jpg")) {
+        if (!mapManager.loadMap("map.jpg"))
+        {
             throw std::runtime_error("map.jpg image file not found!");
         }
 
         cv::Mat map_image = cv::imread("map.jpg");
-        if (map_image.empty()) throw std::runtime_error("map.jpg image file not found!");
-        
+        if (map_image.empty())
+            throw std::runtime_error("map.jpg image file not found!");
+
         std::vector<cv::Point2f> map_points = getCalibrationPoints(map_image, "Calibration: Click 4 Points on Map");
 
         cv::Mat cam_frame;
         int retry_count = 0;
-        while (retry_count < 10) {
+        while (retry_count < 10)
+        {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             camera.read(cam_frame);
-            if (!cam_frame.empty()) break;
+            if (!cam_frame.empty())
+                break;
             retry_count++;
         }
-        if (cam_frame.empty()) throw std::runtime_error("Failed to read camera frame!");
+        if (cam_frame.empty())
+            throw std::runtime_error("Failed to read camera frame!");
 
         std::vector<cv::Point2f> video_points = getCalibrationPoints(cam_frame, "Calibration: Click 4 Points on Camera (320x240)");
 
@@ -98,13 +107,13 @@ int main() {
         g_ai_running = true;
         std::thread gpsThread(gpsWorker, std::ref(gps), std::ref(running));
 
-        std::thread ai_thread([](MapManager& mgr) {
+        std::thread ai_thread([](MapManager &mgr)
+                              {
             try {
                 aiAndTransformThread("results4_fixed.onnx", mgr);
             } catch (const std::exception& e) {
                 std::cerr << "AI thread exception occurred: " << e.what() << std::endl;
-            }
-        }, std::ref(mapManager));
+            } }, std::ref(mapManager));
 
         double speedSetting = 30.0;
         double driveCommand = 0.0;
@@ -119,14 +128,20 @@ int main() {
         cv::namedWindow("RC Car Real-time Monitoring", cv::WINDOW_AUTOSIZE);
         std::cout << "Keyboard input is read from this terminal. Press W/A/S/D without Enter.\n";
 
-        while (running.load() && g_ai_running.load()) {
+        while (running.load() && g_ai_running.load())
+        {
             UartDevice::gpsdata gpsdata;
             {
                 std::lock_guard<std::mutex> lock(gpsMutex);
                 gpsdata = latestGps;
             }
 
-            if (!camera.read(frame) || frame.empty()) throw systemError("Failed to read camera frame");
+            if (!camera.read(frame) || frame.empty())
+            {
+                std::cerr << "[Warning] Failed to read camera frame, retrying..." << std::endl;
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                continue;
+            }
             
             {
                 std::lock_guard<std::mutex> lock(g_ai_mtx);
@@ -143,12 +158,14 @@ int main() {
                 current_boxes = g_person_boxes;
             }
 
-            if (current_detected) {
-                for (size_t i = 0; i < current_boxes.size(); ++i) {
-                    const auto& box = current_boxes[i];
+            if (current_detected)
+            {
+                for (size_t i = 0; i < current_boxes.size(); ++i)
+                {
+                    const auto &box = current_boxes[i];
                     cv::rectangle(frame, box, cv::Scalar(0, 255, 0), 2);
                     std::string label = "PERSON " + std::to_string(i + 1);
-                    cv::putText(frame, label, cv::Point(box.x, std::max(box.y - 5, 15)), 
+                    cv::putText(frame, label, cv::Point(box.x, std::max(box.y - 5, 15)),
                                 cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 2);
                 }
             }
@@ -156,7 +173,8 @@ int main() {
             ++frameCounter;
             const auto now = std::chrono::steady_clock::now();
             const double elapsed = std::chrono::duration<double>(now - fpsStart).count();
-            if (elapsed >= 1.0) {
+            if (elapsed >= 1.0)
+            {
                 measuredFps = frameCounter / elapsed;
                 frameCounter = 0;
                 fpsStart = now;
@@ -167,85 +185,103 @@ int main() {
             cv::Mat display = makeDisplay(frame, measuredFps, tilt, gpsdata, speedSetting, driveCommand, steeringAngle);
             cv::imshow("Robot Camera Control", display);
 
-            double current_lat = gpsdata.gpsfix ? gpsdata.lat : 37.58635; 
-            double current_lon = gpsdata.gpsfix ? gpsdata.lon : 127.09746; 
+            double current_lat = gpsdata.gpsfix ? gpsdata.lat : 37.58635;
+            double current_lon = gpsdata.gpsfix ? gpsdata.lon : 127.09746;
 
             cv::Mat display_map = mapManager.drawMarkers(current_lat, current_lon, current_detected, current_map_positions);
-            if (!display_map.empty()) {
+            if (!display_map.empty())
+            {
                 cv::imshow("RC Car Real-time Monitoring", display_map);
             }
 
             const int windowKey = cv::waitKey(1);
             int key = keyboard.readKey(0);
-            if (key < 0 && windowKey >= 0) key = windowKey & 0xFF;
-            if (key < 0) continue;
+            if (key < 0 && windowKey >= 0)
+                key = windowKey & 0xFF;
+            if (key < 0)
+                continue;
 
-            if (key == 'w' || key == 'W') {
+            if (key == 'w' || key == 'W')
+            {
                 driveCommand = speedSetting;
                 motors.drive(driveCommand);
             }
-            else if (key == 's' || key == 'S') {
+            else if (key == 's' || key == 'S')
+            {
                 driveCommand = -speedSetting;
                 motors.drive(driveCommand);
             }
-            else if (key == ' ') {
+            else if (key == ' ')
+            {
                 driveCommand = 0.0;
                 motors.stop();
             }
-            else if (key == 'a' || key == 'A') {
+            else if (key == 'a' || key == 'A')
+            {
                 steeringAngle = std::max(P2_MIN, steeringAngle - STEERING_STEP);
                 servos.setAngle(2, steeringAngle);
             }
-            else if (key == 'd' || key == 'D') {
+            else if (key == 'd' || key == 'D')
+            {
                 steeringAngle = std::min(P2_MAX, steeringAngle + STEERING_STEP);
                 servos.setAngle(2, steeringAngle);
             }
-            else if (key == 'x' || key == 'X') {
+            else if (key == 'x' || key == 'X')
+            {
                 steeringAngle = P2_CENTER;
                 servos.setAngle(2, steeringAngle);
             }
-            else if (key == '+' || key == '=') {
+            else if (key == '+' || key == '=')
+            {
                 speedSetting = std::min(100.0, speedSetting + 5.0);
-                if (driveCommand != 0.0) {
+                if (driveCommand != 0.0)
+                {
                     driveCommand = driveCommand > 0.0 ? speedSetting : -speedSetting;
                     motors.drive(driveCommand);
                 }
             }
-            else if (key == '-' || key == '_') {
+            else if (key == '-' || key == '_')
+            {
                 speedSetting = std::max(10.0, speedSetting - 5.0);
-                if (driveCommand != 0.0) {
+                if (driveCommand != 0.0)
+                {
                     driveCommand = driveCommand > 0.0 ? speedSetting : -speedSetting;
                     motors.drive(driveCommand);
                 }
             }
-            else if (key == 'r' || key == 'R') {
+            else if (key == 'r' || key == 'R')
+            {
                 steeringAngle = P2_CENTER;
                 servos.setAngle(2, steeringAngle);
             }
-            else if (key == 'q' || key == 'Q' || key == 27) {
+            else if (key == 'q' || key == 'Q' || key == 27)
+            {
                 break;
             }
         }
 
         running = false;
         g_ai_running = false;
-        
+
         motors.stop();
         servos.setAngle(2, P2_CENTER);
         camera.release();
         cv::destroyAllWindows();
 
-        if (gpsThread.joinable()) {
+        if (gpsThread.joinable())
+        {
             gpsThread.join();
         }
 
-        if (ai_thread.joinable()) {
-            ai_thread.join(); 
+        if (ai_thread.joinable())
+        {
+            ai_thread.join();
         }
 
         return 0;
     }
-    catch (const std::exception& error) {
+    catch (const std::exception &error)
+    {
         std::cerr << "Error: " << error.what() << '\n';
         return 1;
     }

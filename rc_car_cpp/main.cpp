@@ -8,6 +8,7 @@
 #include <thread>
 #include <mutex>
 #include <functional>
+#include <vector>
 
 #include "MotorController.h"
 #include "PwmController.h"
@@ -22,12 +23,13 @@
 #include "CalibrationWorker.h"
 #include "Detector.h"
 
-// 💡 메인 루프에서 바운딩 박스를 공유받기 위한 전역 변수 추가
+// 다중 객체 좌표 및 박스를 공유받기 위한 전역 변수 선언
 extern std::mutex g_ai_mtx;
 extern bool g_person_detected;
-extern cv::Point2f g_person_map_pos;
+extern std::vector<cv::Point2f> g_person_map_positions;
+extern std::vector<cv::Rect> g_person_boxes;
 extern cv::Mat g_latest_frame;
-cv::Rect g_person_box(0, 0, 0, 0); // 감지된 박스 좌표 저장을 위한 변수
+extern std::atomic<bool> g_ai_running;
 
 const double P0_CENTER = -80.0;
 const double P1_CENTER = 0.0;
@@ -67,13 +69,14 @@ int main() {
         }
         if (!camera.isOpened()) throw systemError("Failed to open Raspberry Pi camera");
 
-        // MapManager 파트( 호모그래피 , 캘리브레이션 수행 )
-        MapManager mapManager("map.jpg");
+        MapManager mapManager;
+        if (!mapManager.loadMap("map.jpg")) {
+            throw std::runtime_error("map.jpg image file not found!");
+        }
 
         cv::Mat map_image = cv::imread("map.jpg");
         if (map_image.empty()) throw std::runtime_error("map.jpg image file not found!");
         
-        // 1. 먼저 지도 창을 띄워서 4개 클릭
         std::vector<cv::Point2f> map_points = getCalibrationPoints(map_image, "Calibration: Click 4 Points on Map");
 
         cv::Mat cam_frame;
@@ -86,16 +89,15 @@ int main() {
         }
         if (cam_frame.empty()) throw std::runtime_error("Failed to read camera frame!");
 
-        // 2. 지도 클릭이 끝나면 카메라 창을 띄워서 4개 클릭
         std::vector<cv::Point2f> video_points = getCalibrationPoints(cam_frame, "Calibration: Click 4 Points on Camera (320x240)");
 
         mapManager.setHomography(video_points, map_points);
         std::cout << "320x240 Camera and map.jpg homography calibration completed!" << std::endl;
 
         std::atomic<bool> running{true};
+        g_ai_running = true;
         std::thread gpsThread(gpsWorker, std::ref(gps), std::ref(running));
 
-        // 객체 탐지 및 좌표 변환 스레드 생성하면서 분리
         std::thread ai_thread([](MapManager& mgr) {
             try {
                 aiAndTransformThread("results4_fixed.onnx", mgr);
@@ -113,11 +115,11 @@ int main() {
         double measuredFps = 0.0;
         auto fpsStart = std::chrono::steady_clock::now();
 
-        cv::namedWindow("Robot Camera Control", cv::WINDOW_AUTOSIZE); // RC CAR 카메라
-        cv::namedWindow("RC Car Real-time Monitoring", cv::WINDOW_AUTOSIZE); // 위성 지도
+        cv::namedWindow("Robot Camera Control", cv::WINDOW_AUTOSIZE);
+        cv::namedWindow("RC Car Real-time Monitoring", cv::WINDOW_AUTOSIZE);
         std::cout << "Keyboard input is read from this terminal. Press W/A/S/D without Enter.\n";
 
-        while (running.load()) {
+        while (running.load() && g_ai_running.load()) {
             UartDevice::gpsdata gpsdata;
             {
                 std::lock_guard<std::mutex> lock(gpsMutex);
@@ -131,22 +133,24 @@ int main() {
                 g_latest_frame = frame.clone();
             }
 
-            // AI 감지 상태, 지도 위치 및 박스 정보 가져오기
             bool current_detected;
-            cv::Point2f current_map_pos;
-            cv::Rect current_box;
+            std::vector<cv::Point2f> current_map_positions;
+            std::vector<cv::Rect> current_boxes;
             {
                 std::lock_guard<std::mutex> lock(g_ai_mtx);
                 current_detected = g_person_detected;
-                current_map_pos = g_person_map_pos;
-                current_box = g_person_box; // 💡 박스 좌표 동기화
+                current_map_positions = g_person_map_positions;
+                current_boxes = g_person_boxes;
             }
 
-            // 💡 사람이 감지되었다면 카메라 화면(frame)에 초록색 바운딩 박스와 텍스트 그리기
             if (current_detected) {
-                cv::rectangle(frame, current_box, cv::Scalar(0, 255, 0), 2);
-                cv::putText(frame, "DETECTED PERSON", cv::Point(current_box.x, std::max(current_box.y - 5, 15)), 
-                            cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
+                for (size_t i = 0; i < current_boxes.size(); ++i) {
+                    const auto& box = current_boxes[i];
+                    cv::rectangle(frame, box, cv::Scalar(0, 255, 0), 2);
+                    std::string label = "PERSON " + std::to_string(i + 1);
+                    cv::putText(frame, label, cv::Point(box.x, std::max(box.y - 5, 15)), 
+                                cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 2);
+                }
             }
 
             ++frameCounter;
@@ -166,9 +170,10 @@ int main() {
             double current_lat = gpsdata.gpsfix ? gpsdata.lat : 37.58635; 
             double current_lon = gpsdata.gpsfix ? gpsdata.lon : 127.09746; 
 
-            // 위성 지도에 rc카 및 사람 마킹
-            cv::Mat display_map = mapManager.drawMarkers(current_lat, current_lon, current_detected, current_map_pos);
-            cv::imshow("RC Car Real-time Monitoring", display_map);
+            cv::Mat display_map = mapManager.drawMarkers(current_lat, current_lon, current_detected, current_map_positions);
+            if (!display_map.empty()) {
+                cv::imshow("RC Car Real-time Monitoring", display_map);
+            }
 
             const int windowKey = cv::waitKey(1);
             int key = keyboard.readKey(0);
@@ -240,7 +245,6 @@ int main() {
 
         return 0;
     }
-
     catch (const std::exception& error) {
         std::cerr << "Error: " << error.what() << '\n';
         return 1;

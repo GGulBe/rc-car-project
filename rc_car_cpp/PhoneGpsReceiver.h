@@ -4,6 +4,7 @@
 
 #include "UartDevice.h"
 
+
 class PhoneGpsReceiver
 {
 public:
@@ -13,13 +14,13 @@ public:
     PhoneGpsReceiver(const PhoneGpsReceiver&) = delete;
     PhoneGpsReceiver& operator=(const PhoneGpsReceiver&) = delete;
 
-    void waitForClient();
-
     std::string readRmc();
 
     UartDevice::gpsdata parseRmc();
 
 private:
+    void waitForClient();
+
     int serverFd_ = -1;
     int clientFd_ = -1;
 

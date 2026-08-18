@@ -1,53 +1,61 @@
-// 캘리브레이션 및 멀티스레드
 #include "CalibrationWorker.h"
 #include "Detector.h"
 #include <iostream>
-#include <thread>
 #include <chrono>
+#include <thread>
 
+// 전역 변수 정의
 std::mutex g_ai_mtx;
 cv::Mat g_latest_frame;
 bool g_person_detected = false;
-cv::Point2f g_person_map_pos(-1, -1);
+std::vector<cv::Point2f> g_person_map_positions;
+std::vector<cv::Rect> g_person_boxes;
 std::atomic<bool> g_ai_running{true};
 
-void mouseCallback(int event, int x, int y, int flags, void* userdata) {
-    flags = NULL;
+struct ClickContext {
+    std::vector<cv::Point2f> points;
+    std::string window_name;
+    cv::Mat image;
+};
+
+static void mouseCallback(int event, int x, int y, int flags, void* userdata) {
     if (event == cv::EVENT_LBUTTONDOWN) {
-        ClickContext* ctx = reinterpret_cast<ClickContext*>(userdata);
-        if (ctx->points.size() < 4) {
-            ctx->points.push_back(cv::Point2f(static_cast<float>(x), static_cast<float>(y)));
-            std::cout << "[" << ctx->window_name << "] 선택된 픽셀 좌표 (" << ctx->points.size() << "/4): " 
-                      << x << ", " << y << std::endl;
-            
-            cv::circle(ctx->image, cv::Point(x, y), 5, cv::Scalar(0, 255, 0), -1);
-            cv::putText(ctx->image, std::to_string(ctx->points.size()), cv::Point(x + 8, y - 8),
-                        cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
-            cv::imshow(ctx->window_name, ctx->image);
+        auto* context = static_cast<ClickContext*>(userdata);
+        if (context->points.size() < 4) {
+            context->points.emplace_back(static_cast<float>(x), static_cast<float>(y));
+            std::cout << "포인트 선택 [" << context->points.size() << "/4]: (" << x << ", " << y << ")" << std::endl;
         }
     }
 }
-// 마우스 클릭하여 캘리브레이션 진행
+
 std::vector<cv::Point2f> getCalibrationPoints(cv::Mat& img, const std::string& win_name) {
     ClickContext context;
     context.window_name = win_name;
     context.image = img.clone();
 
     cv::namedWindow(win_name, cv::WINDOW_AUTOSIZE);
-    cv::imshow(win_name, context.image);
     cv::setMouseCallback(win_name, mouseCallback, &context);
 
-    std::cout << "\n=== " << win_name << " 창에서 대응점 4개를 순서대로 클릭하세요! ===" << std::endl;
-    std::cout << "(예시 순서: 1.왼쪽 위 -> 2.오른쪽 위 -> 3.오른쪽 아래 -> 4.왼쪽 아래)" << std::endl;
-    
+    std::cout << win_name << " 창에서 순서대로 4개의 점을 클릭해주세요." << std::endl;
+
     while (true) {
-        int key = cv::waitKey(10);
-        if (context.points.size() >= 4) { // 현재 Default값이 4인데 추후 수정
-            std::cout << win_name << " 4개 점 수집 완료!\n" << std::endl;
+        cv::Mat display = context.image.clone();
+        for (size_t i = 0; i < context.points.size(); ++i) {
+            cv::circle(display, context.points[i], 6, cv::Scalar(0, 0, 255), -1);
+            cv::putText(display, std::to_string(i + 1), cv::Point(context.points[i].x + 8, context.points[i].y - 8),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 0, 255), 2);
+        }
+
+        cv::imshow(win_name, display);
+        int key = cv::waitKey(30);
+
+        if (context.points.size() >= 4) {
+            std::cout << "4개 포인트 선택 완료!" << std::endl;
+            cv::waitKey(500);
             break;
         }
-        if (key == 'q' || key == 27) {
-            std::cerr << "캘리브레이션이 취소되었습니다." << std::endl;
+        if (key == 27) { // ESC 키 입력 시 중단
+            std::cout << "캘리브레이션 중단됨" << std::endl;
             break;
         }
     }
@@ -56,35 +64,58 @@ std::vector<cv::Point2f> getCalibrationPoints(cv::Mat& img, const std::string& w
     return context.points;
 }
 
-// 백그라운드에서 AI 추론 및 좌표 변환 스레드 함수
 void aiAndTransformThread(const std::string& model_path, MapManager& mapManager) {
-    Detector detector(model_path, 0.3f);
-    cv::Mat target_frame;
+    try {
+        Detector detector(model_path, 0.3f, 0.45f);
 
-    while (g_ai_running.load()) {
-        {
-            std::lock_guard<std::mutex> lock(g_ai_mtx);
-            if (g_latest_frame.empty()) continue;
-            target_frame = g_latest_frame.clone();
+        std::vector<cv::Point2f> bottom_centers;
+        std::vector<cv::Rect> detected_boxes;
+        std::vector<float> confidences;
+
+        while (g_ai_running) {
+            try {
+                cv::Mat target_frame;
+
+                {
+                    std::lock_guard<std::mutex> lock(g_ai_mtx);
+                    if (!g_latest_frame.empty()) {
+                        target_frame = g_latest_frame.clone();
+                    }
+                }
+
+                if (target_frame.empty()) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    continue;
+                }
+
+                bool detected = detector.detectMultiplePersons(target_frame, bottom_centers, detected_boxes, confidences);
+                std::vector<cv::Point2f> map_positions;
+
+                if (detected) {
+                    for (const auto& center : bottom_centers) {
+                        cv::Point2f transformed = mapManager.transformToMap(center);
+                        map_positions.push_back(transformed);
+                    }
+                }
+
+                {
+                    std::lock_guard<std::mutex> lock(g_ai_mtx);
+                    g_person_detected = detected;
+                    g_person_boxes = detected_boxes;
+                    g_person_map_positions = map_positions;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[AI Loop Error] " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[AI Loop Error] Unknown exception occurred in loop." << std::endl;
+            }
+
+            // 스레드 과부하 방지용 짧은 대기
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
-
-        cv::Point2f bottom_center(0, 0);
-        // 사람 감지 및 bottom_center좌표 받는 함수
-        bool detected = detector.detectPerson(target_frame, bottom_center);
-
-        cv::Point2f transformed_pos(-1, -1);
-        // 사람이 감지 되면 호모그래피로 계산하여 좌표변환
-        if (detected) {
-            transformed_pos = mapManager.transformToMap(bottom_center);
-        }
-
-        {
-            // 감지 결과 및 지도 좌표 반환
-            std::lock_guard<std::mutex> lock(g_ai_mtx);
-            g_person_detected = detected;
-            g_person_map_pos = transformed_pos;
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    } catch (const std::exception& e) {
+        std::cerr << "[AI Thread Fatal Error] " << e.what() << std::endl;
+    } catch (...) {
+        std::cerr << "[AI Thread Fatal Error] Unknown exception occurred during initialization." << std::endl;
     }
 }

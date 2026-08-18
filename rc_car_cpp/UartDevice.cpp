@@ -9,6 +9,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <thread>
+#include <chrono>
 
 UartDevice::UartDevice(const std::string& devicePath)
 {
@@ -21,14 +23,14 @@ UartDevice::UartDevice(const std::string& devicePath)
     }
     
     configure();
-    
 }
 
 UartDevice::~UartDevice()
 {
     if (fd_ >= 0) ::close(fd_);
 }
-//UART 통신 설정
+
+// UART 통신 설정
 void UartDevice::configure()
 {
     termios tty{};
@@ -57,8 +59,6 @@ void UartDevice::configure()
     }
 }
 
-
-
 std::string UartDevice::readRmc()
 {
     while (true) {
@@ -71,30 +71,34 @@ std::string UartDevice::readRmc()
 }
 
 std::string UartDevice::readLine() {
-    std::string line;
-    char ch;
+    // 버퍼링을 도입하여 1바이트씩 읽는 대신 한 번에 읽어와 시스템 콜 부하 최소화
+    static std::string buffer;
+    char read_buf[128];
 
     while (true) {
-        const ssize_t bytesRead = ::read(fd_, &ch, 1);
+        size_t pos = buffer.find('\n');
+        if (pos != std::string::npos) {
+            std::string line = buffer.substr(0, pos);
+            if (!line.empty() && line.back() == '\r') {
+                line.pop_back();
+            }
+            buffer.erase(0, pos + 1);
+            return line;
+        }
+
+        const ssize_t bytesRead = ::read(fd_, read_buf, sizeof(read_buf));
 
         if (bytesRead < 0) {
             throw systemError("Failed to read UART");
         }
 
         if (bytesRead == 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
             continue;
         }
 
-        if (ch == '\n') {
-            break;
-        }
-
-        if (ch != '\r') {
-            line += ch;
-        }
+        buffer.append(read_buf, bytesRead);
     }
-
-    return line;
 }
 
 UartDevice::gpsdata UartDevice::parseRmc()

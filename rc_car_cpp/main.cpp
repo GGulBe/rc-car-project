@@ -8,6 +8,7 @@
 #include <thread>
 #include <mutex>
 #include <functional>
+#include <vector>
 
 #include "MotorController.h"
 #include "PwmController.h"
@@ -20,6 +21,16 @@
 #include "GPSWorker.h"
 #include "MapManager.h"
 #include "CalibrationWorker.h"
+#include "Detector.h"
+#include "PhoneGpsReceiver.h"
+
+// 다중 객체 좌표 및 박스를 공유받기 위한 전역 변수 선언
+extern std::mutex g_ai_mtx;
+extern bool g_person_detected;
+extern std::vector<cv::Point2f> g_person_map_positions;
+extern std::vector<cv::Rect> g_person_boxes;
+extern cv::Mat g_latest_frame;
+extern std::atomic<bool> g_ai_running;
 
 const double P0_CENTER = -80.0;
 const double P1_CENTER = 0.0;
@@ -41,15 +52,13 @@ int main() {
         ServoController servos(pwm);
         MotorController motors(pwm);
         Bno055 imu(bno055I2c);
-        UartDevice gps;
+        //UartDevice gps;
         TerminalInput keyboard;
+        PhoneGpsReceiver gps("10.58.207.77", 5000);
 
         servos.setCalibration(2, { P2_MIN, P2_MAX});
         servos.setAngle(2, P2_CENTER);
         motors.stop();
-
-        std::atomic<bool> running{true};
-        std::thread gpsThread(gpsWorker, std::ref(gps), std::ref(running));
 
         const int width = 320;
         const int height = 240;
@@ -62,11 +71,15 @@ int main() {
         }
         if (!camera.isOpened()) throw systemError("Failed to open Raspberry Pi camera");
 
-        // MapManager 파트( 호모그래피 , 캘리브레이션 수행 )
-        MapManager mapManager("map_3.jpg");
+        MapManager mapManager;
+        if (!mapManager.loadMap("map.jpg")) {
+            throw std::runtime_error("map.jpg image file not found!");
+        }
 
-        cv::Mat map_image = cv::imread("map_3.jpg");
-        if (map_image.empty()) throw std::runtime_error("map_3.jpg 이미지 파일을 찾을 수 없습니다!");
+        cv::Mat map_image = cv::imread("map.jpg");
+        if (map_image.empty()) throw std::runtime_error("map.jpg image file not found!");
+        
+        std::vector<cv::Point2f> map_points = getCalibrationPoints(map_image, "Calibration: Click 4 Points on Map");
 
         cv::Mat cam_frame;
         int retry_count = 0;
@@ -76,36 +89,22 @@ int main() {
             if (!cam_frame.empty()) break;
             retry_count++;
         }
-        if (cam_frame.empty()) throw std::runtime_error("카메라 프레임을 읽어오지 못했습니다!");
+        if (cam_frame.empty()) throw std::runtime_error("Failed to read camera frame!");
 
-        std::vector<cv::Point2f> map_points;
-        std::vector<cv::Point2f> video_points;
-
-        std::cout << "\n=== 지도와 카메라 창이 동시에 열립니다. 각각 대응점 4개씩 클릭해주세요! ===" << std::endl;
-
-        std::thread map_calib_thread([&map_image, &map_points]() {
-            map_points = getCalibrationPoints(map_image, "Calibration: Click 4 Points on Map");
-        });
-
-        video_points = getCalibrationPoints(cam_frame, "Calibration: Click 4 Points on Camera (320x240)");
-
-        if (map_calib_thread.joinable()) {
-            map_calib_thread.join();
-        }
-
-        if (map_points.size() < 4 || video_points.size() < 4) {
-            throw std::runtime_error("캘리브레이션 점 수집이 취소되었거나 4개가 채워지지 않았습니다!");
-        }
+        std::vector<cv::Point2f> video_points = getCalibrationPoints(cam_frame, "Calibration: Click 4 Points on Camera (320x240)");
 
         mapManager.setHomography(video_points, map_points);
-        std::cout << "✨ 320x240 카메라 및 map_3.jpg 호모그래피 캘리브레이션 완료!" << std::endl;
+        std::cout << "320x240 Camera and map.jpg homography calibration completed!" << std::endl;
 
-        // 객체 탐지 및 좌표 변환 스레드 생성하면서 분리
+        std::atomic<bool> running{true};
+        g_ai_running = true;
+        std::thread gpsThread(gpsWorker, std::ref(gps), std::ref(running));
+
         std::thread ai_thread([](MapManager& mgr) {
             try {
                 aiAndTransformThread("results4_fixed.onnx", mgr);
             } catch (const std::exception& e) {
-                std::cerr << " AI 스레드 예외 발생: " << e.what() << std::endl;
+                std::cerr << "AI thread exception occurred: " << e.what() << std::endl;
             }
         }, std::ref(mapManager));
 
@@ -118,11 +117,11 @@ int main() {
         double measuredFps = 0.0;
         auto fpsStart = std::chrono::steady_clock::now();
 
-        cv::namedWindow("Robot Camera Control", cv::WINDOW_AUTOSIZE); // RC CAR 카메라
-        cv::namedWindow("RC Car Real-time Monitoring", cv::WINDOW_AUTOSIZE); // 위성 지도
+        cv::namedWindow("Robot Camera Control", cv::WINDOW_AUTOSIZE);
+        cv::namedWindow("RC Car Real-time Monitoring", cv::WINDOW_AUTOSIZE);
         std::cout << "Keyboard input is read from this terminal. Press W/A/S/D without Enter.\n";
 
-        while (running.load()) {
+        while (running.load() && g_ai_running.load()) {
             UartDevice::gpsdata gpsdata;
             {
                 std::lock_guard<std::mutex> lock(gpsMutex);
@@ -134,6 +133,26 @@ int main() {
             {
                 std::lock_guard<std::mutex> lock(g_ai_mtx);
                 g_latest_frame = frame.clone();
+            }
+
+            bool current_detected;
+            std::vector<cv::Point2f> current_map_positions;
+            std::vector<cv::Rect> current_boxes;
+            {
+                std::lock_guard<std::mutex> lock(g_ai_mtx);
+                current_detected = g_person_detected;
+                current_map_positions = g_person_map_positions;
+                current_boxes = g_person_boxes;
+            }
+
+            if (current_detected) {
+                for (size_t i = 0; i < current_boxes.size(); ++i) {
+                    const auto& box = current_boxes[i];
+                    cv::rectangle(frame, box, cv::Scalar(0, 255, 0), 2);
+                    std::string label = "PERSON " + std::to_string(i + 1);
+                    cv::putText(frame, label, cv::Point(box.x, std::max(box.y - 5, 15)), 
+                                cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 2);
+                }
             }
 
             ++frameCounter;
@@ -150,20 +169,13 @@ int main() {
             cv::Mat display = makeDisplay(frame, measuredFps, tilt, gpsdata, speedSetting, driveCommand, steeringAngle);
             cv::imshow("Robot Camera Control", display);
 
-            bool current_detected;
-            cv::Point2f current_map_pos;
-            {
-                std::lock_guard<std::mutex> lock(g_ai_mtx);
-                current_detected = g_person_detected;
-                current_map_pos = g_person_map_pos;
-            }
-
             double current_lat = gpsdata.gpsfix ? gpsdata.lat : 37.58635; 
             double current_lon = gpsdata.gpsfix ? gpsdata.lon : 127.09746; 
 
-            // 위성 지도에 rc카 및 사람 마킹
-            cv::Mat display_map = mapManager.drawMarkers(current_lat, current_lon, current_detected, current_map_pos);
-            cv::imshow("RC Car Real-time Monitoring", display_map);
+            cv::Mat display_map = mapManager.drawMarkers(current_lat, current_lon, current_detected, current_map_positions);
+            if (!display_map.empty()) {
+                cv::imshow("RC Car Real-time Monitoring", display_map);
+            }
 
             const int windowKey = cv::waitKey(1);
             int key = keyboard.readKey(0);
@@ -235,7 +247,6 @@ int main() {
 
         return 0;
     }
-
     catch (const std::exception& error) {
         std::cerr << "Error: " << error.what() << '\n';
         return 1;

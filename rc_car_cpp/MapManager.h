@@ -1,24 +1,32 @@
-#pragma once
+#ifndef MAP_MANAGER_H
+#define MAP_MANAGER_H
+
 #include <opencv2/opencv.hpp>
-#include <string>
 #include <vector>
+#include <string>
 
 class MapManager {
 private:
-    cv::Mat satellite_map;       // .cpp 파일과 일치
-    cv::Mat homography_matrix;   // .cpp 파일과 일치
-    
-    double lat_max;
-    double lat_min;
-    double lon_min;
-    double lon_max;
+    cv::Mat map_image;
+    cv::Mat current_display_map;
+    cv::Mat homography_matrix;
+    bool has_homography;
 
 public:
-    explicit MapManager(const std::string& map_path);
-    
-    void setHomography(const std::vector<cv::Point2f>& video_pts, const std::vector<cv::Point2f>& map_pts);
+    MapManager();
+    ~MapManager();
+
+    bool loadMap(const std::string& map_path);
+    bool setHomography(const std::vector<cv::Point2f>& video_points, const std::vector<cv::Point2f>& map_points);
     cv::Point2f transformToMap(const cv::Point2f& video_point);
-    cv::Point2f gpsToPixel(double lat, double lon);
-    
-    cv::Mat drawMarkers(double rc_lat, double rc_lon, bool person_detected, const cv::Point2f& person_map_pos);
+
+    // 단일 대상 마커 그리기 (반환 타입 cv::Mat)
+    cv::Mat drawMarkers(double lat, double lon, bool person_detected, const cv::Point2f& person_map_pos);
+
+    // 다중 대상 마커 그리기 (반환 타입 cv::Mat)
+    cv::Mat drawMarkers(double lat, double lon, bool person_detected, const std::vector<cv::Point2f>& person_map_positions);
+
+    cv::Mat getDisplayMap() const;
 };
+
+#endif

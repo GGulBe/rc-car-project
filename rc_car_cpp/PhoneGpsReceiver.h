@@ -17,7 +17,7 @@ public:
 
     std::string readRmc();
 
-    UartDevice::gpsdata parseRmc(const std::string& line) const;
+    UartDevice::gpsdata parseRmc();
 
 private:
     int serverFd_ = -1;

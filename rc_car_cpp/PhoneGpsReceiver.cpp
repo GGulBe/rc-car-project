@@ -170,10 +170,12 @@ std::string PhoneGpsReceiver::readRmc()
 }
 
 
-UartDevice::gpsdata
-PhoneGpsReceiver::parseRmc(const std::string& line) const
+UartDevice::gpsdata PhoneGpsReceiver::parseRmc()
 {
     UartDevice::gpsdata data{};
+
+    // TCP에서 GPS 한 줄 받아오기
+    const std::string line = readRmc();
 
     std::stringstream stream(line);
 
@@ -183,46 +185,20 @@ PhoneGpsReceiver::parseRmc(const std::string& line) const
     std::string utcText;
     std::string dateText;
 
-
     if (!std::getline(stream, gpsfixText, ','))
-    {
-        throw std::runtime_error(
-            "Invalid phone GPS fix data"
-        );
-    }
-
+        throw std::runtime_error("Invalid GPS fix");
 
     if (!std::getline(stream, latText, ','))
-    {
-        throw std::runtime_error(
-            "Invalid phone GPS latitude"
-        );
-    }
-
+        throw std::runtime_error("Invalid latitude");
 
     if (!std::getline(stream, lonText, ','))
-    {
-        throw std::runtime_error(
-            "Invalid phone GPS longitude"
-        );
-    }
-
+        throw std::runtime_error("Invalid longitude");
 
     if (!std::getline(stream, utcText, ','))
-    {
-        throw std::runtime_error(
-            "Invalid phone GPS UTC"
-        );
-    }
-
+        throw std::runtime_error("Invalid UTC");
 
     if (!std::getline(stream, dateText, ','))
-    {
-        throw std::runtime_error(
-            "Invalid phone GPS date"
-        );
-    }
-
+        throw std::runtime_error("Invalid date");
 
     data.gpsfix = (gpsfixText == "1");
 

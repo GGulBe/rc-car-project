@@ -1,6 +1,7 @@
 #pragma once
 
 #include "UartDevice.h"
+#include "PhoneGpsReceiver.h"
 
 #include <atomic>
 #include <mutex>
@@ -11,6 +12,7 @@ extern std::mutex gpsMutex;
 
 
 void gpsWorker(
-    UartDevice& gps,
+    //UartDevice& gps,
+    PhoneGpsReceiver gps,
     std::atomic<bool>& running
 );

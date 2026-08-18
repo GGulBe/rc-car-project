@@ -22,6 +22,7 @@
 #include "MapManager.h"
 #include "CalibrationWorker.h"
 #include "Detector.h"
+#include "PhoneGpsReceiver.h"
 
 // 다중 객체 좌표 및 박스를 공유받기 위한 전역 변수 선언
 extern std::mutex g_ai_mtx;
@@ -53,8 +54,9 @@ int main()
         ServoController servos(pwm);
         MotorController motors(pwm);
         Bno055 imu(bno055I2c);
-        UartDevice gps;
+        //UartDevice gps;
         TerminalInput keyboard;
+        PhoneGpsReceiver gps;
 
         servos.setCalibration(2, {P2_MIN, P2_MAX});
         servos.setAngle(2, P2_CENTER);

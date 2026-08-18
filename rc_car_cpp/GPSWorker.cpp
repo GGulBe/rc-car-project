@@ -16,7 +16,7 @@ static double last_valid_lat = 37.58635;
 static double last_valid_lon = 127.09746;
 static bool has_initial_fix = false;
 
-void gpsWorker(UartDevice& gps, std::atomic<bool>& running)
+void gpsWorker(PhoneGpsReceiver& gps, std::atomic<bool>& running)
 {
     while (running.load()) {
         UartDevice::gpsdata gpsdata = gps.parseRmc();

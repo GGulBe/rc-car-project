@@ -24,10 +24,10 @@
 #include "Detector.h"
 #include "PhoneGpsReceiver.h"
 
-// 다중 객체 좌표 및 박스를 공유받기 위한 전역 변수 선언
+// 전역 변수 및 뮤텍스 선언 (AI 스레드와 공유)
 extern std::mutex g_ai_mtx;
 extern bool g_person_detected;
-extern std::vector<cv::Point2f> g_person_map_positions;
+extern std::vector<cv::Point2f> g_person_rel_meters; // 카메라 기준 상대 미터 좌표
 extern std::vector<cv::Rect> g_person_boxes;
 extern cv::Mat g_latest_frame;
 extern std::atomic<bool> g_ai_running;
@@ -51,12 +51,11 @@ int main() {
         PwmController pwm(i2c);
         ServoController servos(pwm);
         MotorController motors(pwm);
-        Bno055 imu(bno055I2c);
-        //UartDevice gps;
+        Bno055 imu(bno055I2c); // 내부적으로 MODE_NDOF(9축 절대 방위각)로 초기화됨[cite: 1]
         TerminalInput keyboard;
         PhoneGpsReceiver gps("10.58.207.77", 5000);
 
-        servos.setCalibration(2, { P2_MIN, P2_MAX});
+        servos.setCalibration(2, { P2_MIN, P2_MAX });
         servos.setAngle(2, P2_CENTER);
         motors.stop();
 
@@ -71,16 +70,19 @@ int main() {
         }
         if (!camera.isOpened()) throw systemError("Failed to open Raspberry Pi camera");
 
+        // 1. 위성 지도 이미지 로드
+        cv::Mat satelliteMap = cv::imread("map.jpg");
+        if (satelliteMap.empty()) throw std::runtime_error("map.jpg image file not found!");
+
         MapManager mapManager;
-        if (!mapManager.loadMap("map.jpg")) {
-            throw std::runtime_error("map.jpg image file not found!");
-        }
-
-        cv::Mat map_image = cv::imread("map.jpg");
-        if (map_image.empty()) throw std::runtime_error("map.jpg image file not found!");
         
-        std::vector<cv::Point2f> map_points = getCalibrationPoints(map_image, "Calibration: Click 4 Points on Map");
+        // 2. 위성 지도의 실제 지리적 경계(좌상단 NW, 우하단 SE 위경도) 설정
+        // ※ 사용하시는 운동장 위성 사진의 실제 위경도 값으로 반드시 수정해주세요!
+        MapManager::GeoPoint map_nw = { 37.587500, 127.098000 };
+        MapManager::GeoPoint map_se = { 37.586500, 127.099500 };
+        mapManager.setMapGeoBounds(map_nw, map_se, satelliteMap.size());
 
+        // 3. 카메라 초기 프레임 획득
         cv::Mat cam_frame;
         int retry_count = 0;
         while (retry_count < 10) {
@@ -91,20 +93,27 @@ int main() {
         }
         if (cam_frame.empty()) throw std::runtime_error("Failed to read camera frame!");
 
-        std::vector<cv::Point2f> video_points = getCalibrationPoints(cam_frame, "Calibration: Click 4 Points on Camera (320x240)");
-
-        mapManager.setHomography(video_points, map_points);
-        std::cout << "320x240 Camera and map.jpg homography calibration completed!" << std::endl;
+        // 4. 전방 바닥 기준점 캘리브레이션 (카메라 화소 -> RC카 기준 미터 변환)
+        std::vector<cv::Point2f> camPoints = getCalibrationPoints(cam_frame, "Calibration: Click 4 Points on Ground");
+        std::vector<cv::Point2f> groundMeters = {
+            {1.0f, -0.5f}, // 1) 전방 1m, 좌측 0.5m
+            {1.0f,  0.5f}, // 2) 전방 1m, 우측 0.5m
+            {3.0f, -0.5f}, // 3) 전방 3m, 좌측 0.5m
+            {3.0f,  0.5f}  // 4) 전방 3m, 우측 0.5m
+        };
+        mapManager.calibrateCameraToMeters(camPoints, groundMeters);
+        std::cout << "Camera-to-Meters ground calibration completed!" << std::endl;
 
         std::atomic<bool> running{true};
         g_ai_running = true;
         std::thread gpsThread(gpsWorker, std::ref(gps), std::ref(running));
 
+        // AI 추론 및 상대 미터 변환 스레드 시작
         std::thread ai_thread([](MapManager& mgr) {
             try {
                 aiAndTransformThread("results4_fixed.onnx", mgr);
             } catch (const std::exception& e) {
-                std::cerr << "AI thread exception occurred: " << e.what() << std::endl;
+                std::cerr << "AI thread exception exception occurred: " << e.what() << std::endl;
             }
         }, std::ref(mapManager));
 
@@ -136,15 +145,16 @@ int main() {
             }
 
             bool current_detected;
-            std::vector<cv::Point2f> current_map_positions;
+            std::vector<cv::Point2f> current_rel_meters;
             std::vector<cv::Rect> current_boxes;
             {
                 std::lock_guard<std::mutex> lock(g_ai_mtx);
                 current_detected = g_person_detected;
-                current_map_positions = g_person_map_positions;
+                current_rel_meters = g_person_rel_meters;
                 current_boxes = g_person_boxes;
             }
 
+            // 카메라 화면에 감지된 객체 바운딩 박스 표시
             if (current_detected) {
                 for (size_t i = 0; i < current_boxes.size(); ++i) {
                     const auto& box = current_boxes[i];
@@ -164,18 +174,43 @@ int main() {
                 fpsStart = now;
             }
 
+            // IMU로부터 절대 방위각(Heading) 읽기[cite: 1]
             Bno055::Tilt tilt = imu.readMotion();
+            double currentHeading = tilt.headingDeg;
 
             cv::Mat display = makeDisplay(frame, measuredFps, tilt, gpsdata, speedSetting, driveCommand, steeringAngle);
             cv::imshow("Robot Camera Control", display);
 
-            double current_lat = gpsdata.gpsfix ? gpsdata.lat : 37.58635; 
-            double current_lon = gpsdata.gpsfix ? gpsdata.lon : 127.09746; 
+            // 위성 지도 복사본 생성 (실시간 마킹용)
+            cv::Mat display_map = satelliteMap.clone();
 
-            cv::Mat display_map = mapManager.drawMarkers(current_lat, current_lon, current_detected, current_map_positions);
-            if (!display_map.empty()) {
-                cv::imshow("RC Car Real-time Monitoring", display_map);
+            if (gpsdata.gpsfix) {
+                MapManager::GeoPoint carGeo{ gpsdata.lat, gpsdata.lon };
+                
+                // 1. RC카 현재 위치 마킹 (파란색 점)
+                cv::Point carPx = mapManager.geoToMapPixel(carGeo);
+                cv::circle(display_map, carPx, 6, cv::Scalar(255, 0, 0), -1);
+                cv::putText(display_map, "RC CAR", carPx + cv::Point(8, -4), cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(255, 0, 0), 1);
+
+                // 2. 감지된 사람의 실제 위경도 계산 및 마킹 (빨간색 점)
+                if (current_detected) {
+                    for (const auto& rel_m : current_rel_meters) {
+                        // (차량 GPS + 절대 방위각 + 카메라 상대 거리)를 결합하여 사람의 실제 위경도 산출
+                        MapManager::GeoPoint personGeo = mapManager.calculateTargetGeo(carGeo, currentHeading, rel_m);
+                        
+                        // 위경도를 위성 지도 픽셀 좌표로 변환
+                        cv::Point personPx = mapManager.geoToMapPixel(personGeo);
+                        
+                        // 지도 위에 마커 표시
+                        cv::circle(display_map, personPx, 6, cv::Scalar(0, 0, 255), -1);
+                        cv::putText(display_map, "PERSON", personPx + cv::Point(8, -4), cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0, 0, 255), 1);
+                    }
+                }
+            } else {
+                cv::putText(display_map, "Waiting for GPS Fix...", cv::Point(20, 30), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 0, 255), 2);
             }
+
+            cv::imshow("RC Car Real-time Monitoring", display_map);
 
             const int windowKey = cv::waitKey(1);
             int key = keyboard.readKey(0);

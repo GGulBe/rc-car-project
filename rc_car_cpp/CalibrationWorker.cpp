@@ -8,7 +8,7 @@
 std::mutex g_ai_mtx;
 cv::Mat g_latest_frame;
 bool g_person_detected = false;
-std::vector<cv::Point2f> g_person_map_positions;
+std::vector<cv::Point2f> g_person_rel_meters; // 상대 거리 벡터 정의
 std::vector<cv::Rect> g_person_boxes;
 std::atomic<bool> g_ai_running{true};
 
@@ -36,7 +36,13 @@ std::vector<cv::Point2f> getCalibrationPoints(cv::Mat& img, const std::string& w
     cv::namedWindow(win_name, cv::WINDOW_AUTOSIZE);
     cv::setMouseCallback(win_name, mouseCallback, &context);
 
-    std::cout << win_name << " 창에서 순서대로 4개의 점을 클릭해주세요." << std::endl;
+    std::cout << "\n=======================================================" << std::endl;
+    std::cout << win_name << " 창에서 전방 바닥 마커 4개를 순서대로 클릭하세요." << std::endl;
+    std::cout << "1) 전방 1m 좌측 (-0.5m)" << std::endl;
+    std::cout << "2) 전방 1m 우측 (+0.5m)" << std::endl;
+    std::cout << "3) 전방 3m 좌측 (-0.5m)" << std::endl;
+    std::cout << "4) 전방 3m 우측 (+0.5m)" << std::endl;
+    std::cout << "=======================================================\n" << std::endl;
 
     while (true) {
         cv::Mat display = context.image.clone();
@@ -54,7 +60,7 @@ std::vector<cv::Point2f> getCalibrationPoints(cv::Mat& img, const std::string& w
             cv::waitKey(500);
             break;
         }
-        if (key == 27) { // ESC 키 입력 시 중단
+        if (key == 27) { // ESC
             std::cout << "캘리브레이션 중단됨" << std::endl;
             break;
         }
@@ -88,13 +94,15 @@ void aiAndTransformThread(const std::string& model_path, MapManager& mapManager)
                     continue;
                 }
 
+                // AI 객체 검출
                 bool detected = detector.detectMultiplePersons(target_frame, bottom_centers, detected_boxes, confidences);
-                std::vector<cv::Point2f> map_positions;
+                std::vector<cv::Point2f> rel_meters;
 
                 if (detected) {
                     for (const auto& center : bottom_centers) {
-                        cv::Point2f transformed = mapManager.transformToMap(center);
-                        map_positions.push_back(transformed);
+                        // 카메라 화소(발밑) -> RC카 기준 전방/측면 미터(m) 변환
+                        cv::Point2f meter_pos = mapManager.transformToRelativeMeters(center);
+                        rel_meters.push_back(meter_pos);
                     }
                 }
 
@@ -102,7 +110,7 @@ void aiAndTransformThread(const std::string& model_path, MapManager& mapManager)
                     std::lock_guard<std::mutex> lock(g_ai_mtx);
                     g_person_detected = detected;
                     g_person_boxes = detected_boxes;
-                    g_person_map_positions = map_positions;
+                    g_person_rel_meters = rel_meters; // 상대 미터 벡터로 갱신
                 }
             } catch (const std::exception& e) {
                 std::cerr << "[AI Loop Error] " << e.what() << std::endl;
@@ -110,7 +118,6 @@ void aiAndTransformThread(const std::string& model_path, MapManager& mapManager)
                 std::cerr << "[AI Loop Error] Unknown exception occurred in loop." << std::endl;
             }
 
-            // 스레드 과부하 방지용 짧은 대기
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
     } catch (const std::exception& e) {

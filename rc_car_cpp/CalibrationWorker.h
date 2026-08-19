@@ -7,11 +7,11 @@
 #include <mutex>
 #include "MapManager.h"
 
-// 공유 전역 변수 선언 (다중 객체 vector 구조 반영)
+// main.cpp와 공유하는 전역 변수
 extern std::mutex g_ai_mtx;
 extern cv::Mat g_latest_frame;
 extern bool g_person_detected;
-extern std::vector<cv::Point2f> g_person_map_positions;
+extern std::vector<cv::Point2f> g_person_rel_meters; // 상대 미터 거리(m)로 변경
 extern std::vector<cv::Rect> g_person_boxes;
 extern std::atomic<bool> g_ai_running;
 

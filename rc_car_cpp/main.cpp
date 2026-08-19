@@ -53,7 +53,7 @@ int main() {
         MotorController motors(pwm);
         Bno055 imu(bno055I2c); // 내부적으로 MODE_NDOF(9축 절대 방위각)로 초기화됨[cite: 1]
         TerminalInput keyboard;
-        PhoneGpsReceiver gps("10.58.207.77", 5000);
+        PhoneGpsReceiver gps("10.40.202.172", 5000);
 
         servos.setCalibration(2, { P2_MIN, P2_MAX });
         servos.setAngle(2, P2_CENTER);

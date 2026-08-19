@@ -17,13 +17,13 @@ public:
     
 
     explicit Bno055(I2cDevice& i2c);
-
-    void initialize();
+    
+    void initialize();    
     Tilt readMotion() const;
 
 private: 
     static std::int16_t decodeInt16(const std::uint8_t* data);
-
+    void initialize();
     I2cDevice& i2c_;
     
     static const std::uint8_t REG_EULER = 0x1A;         // EULER 사용 0x1A  Heading LSB 0x1B  Heading MSB 0x1C  Roll LSB 0x1D  Roll MSB 0x1E  Pitch LSB 0x1F  Pitch MSB
@@ -35,5 +35,5 @@ private:
     
     static const std::uint8_t CHIP_ID_VALUE = 0xA0;     // 우리가 쓰는 BNO055 칩 고유 id 값
     static const std::uint8_t MODE_CONFIG = 0x00;       // 설정 변경 되는 config 값
-    static const std::uint8_t MODE_IMU = 0x08;          // imu 센서 융합 모드 값
+    static const std::uint8_t MODE_IMU = 0x0C;          // 9축 사용
 };

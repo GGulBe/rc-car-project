@@ -58,21 +58,21 @@ cv::Point2f MapManager::transformToRelativeMeters(const cv::Point2f& cam_pixel) 
     cv::perspectiveTransform(src, dst, H_cam_to_meters_);
 
     if (!dst.empty()) {
-        return dst[0]; // dst[0].x: 전방 거리(m), dst[0].y: 우측 거리(m)
+        return dst[0];
     }
     return cv::Point2f(0.0f, 0.0f);
 }
 
 MapManager::GeoPoint MapManager::calculateTargetGeo(const GeoPoint& car_gps, double car_heading_deg, const cv::Point2f& rel_meters) {
+    // IMU 방위각을 라디안으로 변환
     double heading_rad = car_heading_deg * (M_PI / 180.0);
     double forward_m = rel_meters.x;
     double right_m = rel_meters.y;
 
-    // 헤딩 기준 회전 변환 (북쪽 이동량 dN, 동쪽 이동량 dE)
+    // 북향(dN), 동향(dE) 상대 변위 계산
     double dN = forward_m * std::cos(heading_rad) - right_m * std::sin(heading_rad);
     double dE = forward_m * std::sin(heading_rad) + right_m * std::cos(heading_rad);
 
-    // 미터 -> 위경도 변화량 변환 (WGS84 평면 근사식)
     double delta_lat = dN / 111139.0;
     double delta_lon = dE / (111139.0 * std::cos(car_gps.lat * (M_PI / 180.0)));
 
@@ -87,8 +87,9 @@ cv::Point2i MapManager::geoToMapPixel(const GeoPoint& target_gps) {
     double x_ratio = (target_gps.lon - geo_top_left_.lon) / (geo_bottom_right_.lon - geo_top_left_.lon);
     double y_ratio = (geo_top_left_.lat - target_gps.lat) / (geo_top_left_.lat - geo_bottom_right_.lat);
 
-    int px = static_cast<int>(x_ratio * map_size_.width) +6;
-    int py = static_cast<int>(y_ratio * map_size_.height) +30;
+    // 현장 캘리브레이션 오프셋 유지 (+6, +30)
+    int px = static_cast<int>(x_ratio * map_size_.width) - 7;
+    int py = static_cast<int>(y_ratio * map_size_.height) + 28;
 
     return cv::Point2i(
         std::clamp(px, 0, map_size_.width - 1),
@@ -102,16 +103,43 @@ cv::Mat MapManager::drawMarkers(const GeoPoint& car_gps, double car_heading_deg,
 
     current_display_map_ = map_image_.clone();
 
-    // 1. RC카 현재 GPS 위치 렌더링 (파란색 원)
+    // 1. 궤적 점 추가 및 최대 개수 관리 (150개 제한)
+    if (trajectory_.empty() || 
+        std::abs(trajectory_.back().lat - car_gps.lat) > 0.000008 || 
+        std::abs(trajectory_.back().lon - car_gps.lon) > 0.000008) {
+        
+        trajectory_.push_back(car_gps);
+        
+        if (trajectory_.size() > 150) {
+            trajectory_.erase(trajectory_.begin());
+        }
+    }
+
+    // 2. CPU 연산 부하가 적은 LINE_8로 궤적 선 그리기
+    if (trajectory_.size() > 1) {
+        std::vector<cv::Point> pts;
+        pts.reserve(trajectory_.size());
+        for (const auto& pt : trajectory_) {
+            pts.push_back(geoToMapPixel(pt));
+        }
+        cv::polylines(current_display_map_, pts, false, cv::Scalar(0, 165, 255), 2, cv::LINE_8);
+    }
+
+    // 3. RC카 현재 위치 렌더링
     cv::Point2i car_px = geoToMapPixel(car_gps);
     cv::circle(current_display_map_, car_px, 7, cv::Scalar(255, 0, 0), -1);
     cv::circle(current_display_map_, car_px, 9, cv::Scalar(255, 255, 255), 2);
     cv::putText(current_display_map_, "RC CAR", cv::Point(car_px.x + 10, car_px.y + 4),
                 cv::FONT_HERSHEY_SIMPLEX, 0.45, cv::Scalar(255, 0, 0), 2);
 
-    // 2. 감지된 사람 위치 렌더링 (빨간색 원)
+    // 4. 감지된 사람 위치 렌더링 (음수 거리 및 비정상 범위 필터링 적용)
     if (person_detected) {
         for (size_t i = 0; i < rel_meters_list.size(); ++i) {
+            // 전방 거리가 0m 이하이거나 15m 이상인 비정상 투영값은 지도에 렌더링하지 않음
+            if (rel_meters_list[i].x <= 0.1f || rel_meters_list[i].x > 15.0f) {
+                continue;
+            }
+
             GeoPoint person_geo = calculateTargetGeo(car_gps, car_heading_deg, rel_meters_list[i]);
             cv::Point2i person_px = geoToMapPixel(person_geo);
 

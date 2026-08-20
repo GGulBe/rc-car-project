@@ -15,8 +15,8 @@ struct DetectorImpl {
     std::vector<const char*> input_names_ptr;
     std::vector<const char*> output_names_ptr;
 
-    int input_width = 576;   // 기본 모델 너비
-    int input_height = 432;  // 기본 모델 높이
+    int input_width = 448;   // 기본 모델 너비
+    int input_height = 336;  // 기본 모델 높이
 
     DetectorImpl(const std::string& model_path) {
         session_options.SetIntraOpNumThreads(2);
@@ -204,9 +204,10 @@ bool Detector::detectMultiplePersons(
             bottom_centers.emplace_back(center_x, bottom_y);
             confidences.push_back(conf);
 
-            std::cout << "[DEBUG] Person Detected! | Conf: " << conf << " (" << (conf * 100.0f) << "%)"
+            /*std::cout << "[DEBUG] Person Detected! | Conf: " << conf << " (" << (conf * 100.0f) << "%)"
                       << " | Box: (" << box.x << ", " << box.y << ", " << box.width << ", " << box.height << ")"
                       << std::endl;
+            */
         }
 
         return !out_boxes.empty();

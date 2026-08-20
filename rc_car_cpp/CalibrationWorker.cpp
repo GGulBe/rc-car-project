@@ -8,7 +8,7 @@
 std::mutex g_ai_mtx;
 cv::Mat g_latest_frame;
 bool g_person_detected = false;
-std::vector<cv::Point2f> g_person_rel_meters; // 상대 거리 벡터 정의
+std::vector<cv::Point2f> g_person_rel_meters; 
 std::vector<cv::Rect> g_person_boxes;
 std::atomic<bool> g_ai_running{true};
 
@@ -72,57 +72,54 @@ std::vector<cv::Point2f> getCalibrationPoints(cv::Mat& img, const std::string& w
 
 void aiAndTransformThread(const std::string& model_path, MapManager& mapManager) {
     try {
-        Detector detector(model_path, 0.3f, 0.45f);
+        Detector detector(model_path, 0.25f, 0.50f);
 
         std::vector<cv::Point2f> bottom_centers;
         std::vector<cv::Rect> detected_boxes;
         std::vector<float> confidences;
 
-        while (g_ai_running) {
-            try {
-                cv::Mat target_frame;
+        while (g_ai_running.load()) {
+            cv::Mat target_frame;
 
-                {
-                    std::lock_guard<std::mutex> lock(g_ai_mtx);
-                    if (!g_latest_frame.empty()) {
-                        target_frame = g_latest_frame.clone();
-                    }
+            // 최신 프레임 획득 후 즉시 락 해제
+            {
+                std::lock_guard<std::mutex> lock(g_ai_mtx);
+                if (!g_latest_frame.empty()) {
+                    target_frame = g_latest_frame.clone();
                 }
-
-                if (target_frame.empty()) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                    continue;
-                }
-
-                // AI 객체 검출
-                bool detected = detector.detectMultiplePersons(target_frame, bottom_centers, detected_boxes, confidences);
-                std::vector<cv::Point2f> rel_meters;
-
-                if (detected) {
-                    for (const auto& center : bottom_centers) {
-                        // 카메라 화소(발밑) -> RC카 기준 전방/측면 미터(m) 변환
-                        cv::Point2f meter_pos = mapManager.transformToRelativeMeters(center);
-                        rel_meters.push_back(meter_pos);
-                    }
-                }
-
-                {
-                    std::lock_guard<std::mutex> lock(g_ai_mtx);
-                    g_person_detected = detected;
-                    g_person_boxes = detected_boxes;
-                    g_person_rel_meters = rel_meters; // 상대 미터 벡터로 갱신
-                }
-            } catch (const std::exception& e) {
-                std::cerr << "[AI Loop Error] " << e.what() << std::endl;
-            } catch (...) {
-                std::cerr << "[AI Loop Error] Unknown exception occurred in loop." << std::endl;
             }
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            if (target_frame.empty()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                continue;
+            }
+
+            // AI 객체 검출 실행
+            bool detected = detector.detectMultiplePersons(target_frame, bottom_centers, detected_boxes, confidences);
+
+            // 상대 거리 변환
+            std::vector<cv::Point2f> rel_meters;
+            if (detected) {
+                for (const auto& center : bottom_centers) {
+                    cv::Point2f meter_pos = mapManager.transformToRelativeMeters(center);
+                    rel_meters.push_back(meter_pos);
+                }
+            }
+
+            // 검출 결과 공유
+            {
+                std::lock_guard<std::mutex> lock(g_ai_mtx);
+                g_person_detected = detected;
+                g_person_boxes = detected_boxes;
+                g_person_rel_meters = rel_meters;
+            }
+
+            // 메인 루프 양보를 위한 슬립
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     } catch (const std::exception& e) {
         std::cerr << "[AI Thread Fatal Error] " << e.what() << std::endl;
     } catch (...) {
-        std::cerr << "[AI Thread Fatal Error] Unknown exception occurred during initialization." << std::endl;
+        std::cerr << "[AI Thread Fatal Error] Unknown exception occurred." << std::endl;
     }
 }

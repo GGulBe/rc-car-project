@@ -87,8 +87,8 @@ cv::Point2i MapManager::geoToMapPixel(const GeoPoint& target_gps) {
     double x_ratio = (target_gps.lon - geo_top_left_.lon) / (geo_bottom_right_.lon - geo_top_left_.lon);
     double y_ratio = (geo_top_left_.lat - target_gps.lat) / (geo_top_left_.lat - geo_bottom_right_.lat);
 
-    int px = static_cast<int>(x_ratio * map_size_.width);
-    int py = static_cast<int>(y_ratio * map_size_.height);
+    int px = static_cast<int>(x_ratio * map_size_.width) +6;
+    int py = static_cast<int>(y_ratio * map_size_.height) +30;
 
     return cv::Point2i(
         std::clamp(px, 0, map_size_.width - 1),

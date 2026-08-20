@@ -17,8 +17,10 @@ std::runtime_error systemError(const std::string& message) {
 
 std::string makePipeline(int width, int height, int fps) {
     std::ostringstream pipeline;
-    pipeline << "libcamerasrc ! video/x-raw,width=" << width << ",height=" << height << ",format=NV12,framerate=" << fps
-        << "/1 ! videoconvert ! video/x-raw,format=BGR ! queue max-size-buffers=1 leaky=downstream ! appsink drop=true max-buffers=1 sync=false" << std::endl;
+    // std::endl 제거 완료 (문자열 끝에 줄바꿈이 들어가면 GStreamer 파이프라인이 오작동합니다)
+    pipeline << "libcamerasrc ! video/x-raw,width=" << width << ",height=" << height 
+             << ",format=NV12,framerate=" << fps << "/1 ! videoconvert ! video/x-raw,format=BGR "
+             << "! queue max-size-buffers=1 leaky=downstream ! appsink drop=true max-buffers=1 sync=false";
     return pipeline.str();
 }
 

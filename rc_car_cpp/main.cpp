@@ -51,7 +51,7 @@ int main() {
         PwmController pwm(i2c);
         ServoController servos(pwm);
         MotorController motors(pwm);
-        Bno055 imu(bno055I2c); // 내부적으로 MODE_NDOF(9축 절대 방위각)로 초기화됨[cite: 1]
+        Bno055 imu(bno055I2c);
         TerminalInput keyboard;
         PhoneGpsReceiver gps("10.40.202.172", 5000);
 
@@ -59,8 +59,8 @@ int main() {
         servos.setAngle(2, P2_CENTER);
         motors.stop();
 
-        const int width = 320;
-        const int height = 240;
+        const int width = 576;
+        const int height = 432;
         const int targetFps = 30;
 
         cv::VideoCapture camera(makePipeline(width, height, targetFps), cv::CAP_GSTREAMER);
@@ -77,32 +77,36 @@ int main() {
         MapManager mapManager;
         
         // 2. 위성 지도의 실제 지리적 경계(좌상단 NW, 우하단 SE 위경도) 설정
-        // ※ 사용하시는 운동장 위성 사진의 실제 위경도 값으로 반드시 수정해주세요!
-        MapManager::GeoPoint map_nw = { 37.587500, 127.098000 };
-        MapManager::GeoPoint map_se = { 37.586500, 127.099500 };
+        MapManager::GeoPoint map_nw = { 37.587197, 127.097464 };
+        MapManager::GeoPoint map_se = { 37.586367, 127.098331 };
         mapManager.setMapGeoBounds(map_nw, map_se, satelliteMap.size());
 
-        // 3. 카메라 초기 프레임 획득
+        // 3. 카메라 초기 프레임 획득 및 자동 노출(AE/AGC) 안정화
         cv::Mat cam_frame;
-        int retry_count = 0;
-        while (retry_count < 10) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::cout << ">> 카메라 자동 노출(AE) 안정화 중 (약 1.5초)..." << std::endl;
+        for (int i = 0; i < 40; ++i) {
             camera.read(cam_frame);
-            if (!cam_frame.empty()) break;
-            retry_count++;
+            std::this_thread::sleep_for(std::chrono::milliseconds(30));
         }
         if (cam_frame.empty()) throw std::runtime_error("Failed to read camera frame!");
 
-        // 4. 전방 바닥 기준점 캘리브레이션 (카메라 화소 -> RC카 기준 미터 변환)
-        std::vector<cv::Point2f> camPoints = getCalibrationPoints(cam_frame, "Calibration: Click 4 Points on Ground");
+        // 4. 전방 바닥 기준점 캘리브레이션 (측정한 4개 점 좌표 고정 적용)
+        std::vector<cv::Point2f> camPoints = {
+            { 91.0f, 182.0f}, // 1) 전방 1m, 좌측 0.5m
+            {278.0f, 178.0f}, // 2) 전방 1m, 우측 0.5m
+            {149.0f, 163.0f}, // 3) 전방 3m, 좌측 0.5m
+            {215.0f, 163.0f}  // 4) 전방 3m, 우측 0.5m
+        };
+
         std::vector<cv::Point2f> groundMeters = {
             {1.0f, -0.5f}, // 1) 전방 1m, 좌측 0.5m
             {1.0f,  0.5f}, // 2) 전방 1m, 우측 0.5m
             {3.0f, -0.5f}, // 3) 전방 3m, 좌측 0.5m
             {3.0f,  0.5f}  // 4) 전방 3m, 우측 0.5m
         };
+
         mapManager.calibrateCameraToMeters(camPoints, groundMeters);
-        std::cout << "Camera-to-Meters ground calibration completed!" << std::endl;
+        std::cout << ">> Camera-to-Meters ground calibration completed (Pre-set applied)!" << std::endl;
 
         std::atomic<bool> running{true};
         g_ai_running = true;
@@ -111,9 +115,9 @@ int main() {
         // AI 추론 및 상대 미터 변환 스레드 시작
         std::thread ai_thread([](MapManager& mgr) {
             try {
-                aiAndTransformThread("results4_fixed.onnx", mgr);
+                aiAndTransformThread("r33_576_INT8_TEST.onnx", mgr);
             } catch (const std::exception& e) {
-                std::cerr << "AI thread exception exception occurred: " << e.what() << std::endl;
+                std::cerr << "AI thread exception occurred: " << e.what() << std::endl;
             }
         }, std::ref(mapManager));
 
@@ -174,7 +178,7 @@ int main() {
                 fpsStart = now;
             }
 
-            // IMU로부터 절대 방위각(Heading) 읽기[cite: 1]
+            // IMU 절대 방위각 읽기
             Bno055::Tilt tilt = imu.readMotion();
             double currentHeading = tilt.headingDeg;
 
@@ -192,16 +196,12 @@ int main() {
                 cv::circle(display_map, carPx, 6, cv::Scalar(255, 0, 0), -1);
                 cv::putText(display_map, "RC CAR", carPx + cv::Point(8, -4), cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(255, 0, 0), 1);
 
-                // 2. 감지된 사람의 실제 위경도 계산 및 마킹 (빨간색 점)
+                // 2. 감지된 사람 위치 계산 및 마킹 (빨간색 점)
                 if (current_detected) {
                     for (const auto& rel_m : current_rel_meters) {
-                        // (차량 GPS + 절대 방위각 + 카메라 상대 거리)를 결합하여 사람의 실제 위경도 산출
                         MapManager::GeoPoint personGeo = mapManager.calculateTargetGeo(carGeo, currentHeading, rel_m);
-                        
-                        // 위경도를 위성 지도 픽셀 좌표로 변환
                         cv::Point personPx = mapManager.geoToMapPixel(personGeo);
                         
-                        // 지도 위에 마커 표시
                         cv::circle(display_map, personPx, 6, cv::Scalar(0, 0, 255), -1);
                         cv::putText(display_map, "PERSON", personPx + cv::Point(8, -4), cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0, 0, 255), 1);
                     }

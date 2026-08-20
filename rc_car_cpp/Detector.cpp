@@ -15,6 +15,9 @@ struct DetectorImpl {
     std::vector<const char*> input_names_ptr;
     std::vector<const char*> output_names_ptr;
 
+    int input_width = 576;   // 기본 모델 너비
+    int input_height = 432;  // 기본 모델 높이
+
     DetectorImpl(const std::string& model_path) {
         session_options.SetIntraOpNumThreads(2);
         session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
@@ -23,13 +26,21 @@ struct DetectorImpl {
 
         Ort::AllocatorWithDefaultOptions allocator;
 
-        size_t num_inputs = session->GetInputCount();
-        for (size_t i = 0; i < num_inputs; ++i) {
-            auto name = session->GetInputNameAllocated(i, allocator);
+        // Input shape 자동 추출
+        const size_t num_inputs = session->GetInputCount();
+        if (num_inputs > 0) {
+            auto name = session->GetInputNameAllocated(0, allocator);
             input_node_names.push_back(name.get());
-        }
-        for (auto& name : input_node_names) {
-            input_names_ptr.push_back(name.c_str());
+            input_names_ptr.push_back(input_node_names.back().c_str());
+
+            auto type_info = session->GetInputTypeInfo(0);
+            auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+            auto input_shape = tensor_info.GetShape();
+
+            if (input_shape.size() == 4) {
+                if (input_shape[3] > 0) input_width = static_cast<int>(input_shape[3]);
+                if (input_shape[2] > 0) input_height = static_cast<int>(input_shape[2]);
+            }
         }
 
         size_t num_outputs = session->GetOutputCount();
@@ -41,7 +52,8 @@ struct DetectorImpl {
             output_names_ptr.push_back(name.c_str());
         }
 
-        std::cout << "ONNX 모델 로드 성공" << std::endl;
+        std::cout << "[AI] ONNX 모델 로드 성공: " << model_path 
+                  << " | 요구 입력 크기: " << input_width << "x" << input_height << std::endl;
         for (size_t i = 0; i < output_node_names.size(); ++i) {
             std::cout << "Output[" << i << "]: " << output_node_names[i] << std::endl;
         }
@@ -77,17 +89,25 @@ bool Detector::detectMultiplePersons(
         return false;
     }
 
+    // 1. 카메라 해상도와 관계없이 모델이 요구하는 크기로 자동 리사이즈
+    cv::Mat resized_frame;
+    if (frame.cols != pImpl->input_width || frame.rows != pImpl->input_height) {
+        cv::resize(frame, resized_frame, cv::Size(pImpl->input_width, pImpl->input_height));
+    } else {
+        resized_frame = frame;
+    }
+
     cv::Mat blob = cv::dnn::blobFromImage(
-        frame,
+        resized_frame,
         1.0 / 255.0,
-        cv::Size(320, 240),
+        cv::Size(pImpl->input_width, pImpl->input_height),
         cv::Scalar(0, 0, 0),
         true,
         false
     );
 
-    std::vector<int64_t> input_shape = {1, 3, 240, 320};
-    size_t input_tensor_size = 1 * 3 * 240 * 320;
+    std::vector<int64_t> input_shape = {1, 3, pImpl->input_height, pImpl->input_width};
+    size_t input_tensor_size = 1 * 3 * pImpl->input_height * pImpl->input_width;
 
     auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
     Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
@@ -128,16 +148,21 @@ bool Detector::detectMultiplePersons(
         std::vector<cv::Rect> candidate_boxes;
         std::vector<float> candidate_scores;
 
+        // 모델 공간 좌표를 원래 카메라 프레임 크기로 스케일링하기 위한 비율 계산
+        const float scale_x = static_cast<float>(frame.cols) / static_cast<float>(pImpl->input_width);
+        const float scale_y = static_cast<float>(frame.rows) / static_cast<float>(pImpl->input_height);
+
         for (int i = 0; i < num_boxes; ++i) {
             float score = scores[i];
             if (score < conf_threshold) {
                 continue;
             }
 
-            float x1 = boxes[i * 4 + 0];
-            float y1 = boxes[i * 4 + 1];
-            float x2 = boxes[i * 4 + 2];
-            float y2 = boxes[i * 4 + 3];
+            // 모델 출력 좌표를 원본 카메라 해상도 기준으로 복원
+            float x1 = boxes[i * 4 + 0] * scale_x;
+            float y1 = boxes[i * 4 + 1] * scale_y;
+            float x2 = boxes[i * 4 + 2] * scale_x;
+            float y2 = boxes[i * 4 + 3] * scale_y;
 
             int left   = static_cast<int>(std::round(x1));
             int top    = static_cast<int>(std::round(y1));
@@ -203,7 +228,6 @@ bool Detector::detectPerson(
     std::vector<float> confs;
 
     if (detectMultiplePersons(frame, centers, boxes, confs) && !boxes.empty()) {
-        // 검출된 대상 중 Conf가 가장 높은 첫 번째 객체 반환
         bottom_center = centers[0];
         out_box = boxes[0];
         return true;

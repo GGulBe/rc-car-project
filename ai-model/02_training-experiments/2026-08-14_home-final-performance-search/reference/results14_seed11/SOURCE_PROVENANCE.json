@@ -1,5 +1,5 @@
 {
-  "source_archive": "C:/Users/Parkj/Desktop/results/2026_08_14(2)/results.14.zip",
+  "source_archive": "results.14.zip (local experiment archive; not committed)",
   "source_experiment": "r3_school1_fpn48_exp200_seed11",
   "selection_split": "valid",
   "test_split_used": false,

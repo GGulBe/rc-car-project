@@ -1,4 +1,4 @@
-model=C:\Users\Parkj\Desktop\results27_lightweight_pipeline\results27_lightweight_pipeline\models\results27_640_fp32.onnx
+model=models/results27_640_fp32.onnx
 total_conv=87
 groups={'backbone': 31, 'fpn': 12, 'head': 44}
 

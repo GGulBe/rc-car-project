@@ -80,7 +80,6 @@
 | 하드웨어 인터페이스 | I2C, UART, GPIO, PWM |
 | 센서 | BNO055 IMU, GPS(+스마트폰 GPS 릴레이) |
 | 동시성 | std::thread, std::mutex |
-| AI 개발 보조 도구 | Gemini |
 
 ## 팀 구성
 

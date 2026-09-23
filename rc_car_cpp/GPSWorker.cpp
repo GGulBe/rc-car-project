@@ -4,14 +4,11 @@
 UartDevice::gpsdata latestGps;
 std::mutex gpsMutex;
 
-// 💡 선배님 피드백 반영: GPS Out of Range(튀는 값) 필터링을 위한 경계값 설정
-// (사용하시는 실제 주행 지역에 맞게 아래 Min/Max 범위를 수정하세요)
 const double LAT_MIN = 37.5000;
 const double LAT_MAX = 37.7000;
 const double LON_MIN = 127.0000;
 const double LON_MAX = 127.2000;
 
-// 직전의 유효한 위치를 기억하기 위한 정적 변수
 static double last_valid_lat = 37.58635;
 static double last_valid_lon = 127.09746;
 static bool has_initial_fix = false;
@@ -21,9 +18,8 @@ void gpsWorker(PhoneGpsReceiver& gps, std::atomic<bool>& running)
     while (running.load()) {
         UartDevice::gpsdata gpsdata = gps.parseRmc();
 
-        // GPS 고정이 성공했을 때만 범위 검사 수행
         if (gpsdata.gpsfix) {
-            // Out of Range 검사 (지정된 구역 내에 있는지 확인)
+            // Out of Range 
             if (gpsdata.lat >= LAT_MIN && gpsdata.lat <= LAT_MAX &&
                 gpsdata.lon >= LON_MIN && gpsdata.lon <= LON_MAX) {
                 

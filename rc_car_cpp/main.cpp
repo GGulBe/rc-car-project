@@ -86,7 +86,7 @@ int main() {
         }
         if (!camera.isOpened()) throw systemError("Failed to open Raspberry Pi camera");
 
-        // 1. 위성 지도 이미지 로드 및 MapManager 등록
+        // 위성 지도 이미지 로드 및 MapManager 등록
         cv::Mat satelliteMap = cv::imread("map.jpg");
         if (satelliteMap.empty()) throw std::runtime_error("map.jpg image file not found!");
 
@@ -95,12 +95,12 @@ int main() {
             throw std::runtime_error("MapManager failed to load map.jpg!");
         }
         
-        // 2. 위성 지도의 실제 지리적 경계 설정
+        // 위성 지도의 실제 지리적 경계 설정
         MapManager::GeoPoint map_nw = { 37.587197, 127.097464 };
         MapManager::GeoPoint map_se = { 37.586367, 127.098331 };
         mapManager.setMapGeoBounds(map_nw, map_se, satelliteMap.size());
 
-        // 3. 카메라 초기 프레임 획득 및 자동 노출(AE/AGC) 안정화
+        // 카메라 초기 프레임 획득 및 자동 노출(AE/AGC) 안정화
         cv::Mat cam_frame;
         std::cout << ">> 카메라 자동 노출(AE) 안정화 중 (약 1.5초)..." << std::endl;
         for (int i = 0; i < 40; ++i) {
@@ -110,7 +110,7 @@ int main() {
         if (cam_frame.empty()) throw std::runtime_error("Failed to read camera frame!");
         std::cout << ">> Actual Camera Resolution: " << cam_frame.cols << "x" << cam_frame.rows << std::endl;
 
-        // 4. 전방 바닥 기준점 캘리브레이션
+        // 전방 바닥 기준점 캘리브레이션
         std::vector<cv::Point2f> groundMeters = {
             {1.0f, -0.5f}, // 1) 전방 1m 좌측
             {1.0f,  0.5f}, // 2) 전방 1m 우측
@@ -118,7 +118,7 @@ int main() {
             {3.0f,  0.5f}  // 4) 전방 3m 우측
         };
 
-        // 💡 448x336 해상도에 맞춰 1.4배 자동 스케일링된 하드코딩 좌표
+        // 448x336 해상도에 맞춰 1.4배 자동 스케일링된 하드코딩 좌표
         std::vector<cv::Point2f> camPoints = {
             {133.0f, 259.0f}, // 1번: 전방 1m 좌측
             {315.0f, 259.0f}, // 2번: 전방 1m 우측
@@ -129,7 +129,7 @@ int main() {
         mapManager.calibrateCameraToMeters(camPoints, groundMeters);
         std::cout << ">> Camera-to-Meters ground calibration completed (448x336 Scaled)!" << std::endl;
 
-        // 5. GUI 윈도우 생성 및 초기 화면 갱신
+        // GUI 윈도우 생성 및 초기 화면 갱신
         cv::namedWindow("Robot Camera Control", cv::WINDOW_AUTOSIZE);
         cv::namedWindow("RC Car Real-time Monitoring", cv::WINDOW_AUTOSIZE);
         cv::imshow("Robot Camera Control", cam_frame);
@@ -141,7 +141,7 @@ int main() {
         std::atomic<bool> running{true};
         g_ai_running = true;
 
-        // 6. 백그라운드 스레드 시작
+        // 백그라운드 스레드 시작
         SafeThread gpsThread(gpsWorker, std::ref(gps), std::ref(running));
 
         SafeThread ai_thread([](MapManager& mgr) {

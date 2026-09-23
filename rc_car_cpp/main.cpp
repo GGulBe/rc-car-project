@@ -25,7 +25,6 @@
 #include "Detector.h"
 #include "PhoneGpsReceiver.h"
 
-// 전역 변수 및 뮤텍스 선언 (AI 스레드와 공유)
 extern std::mutex g_ai_mtx;
 extern bool g_person_detected;
 extern std::vector<cv::Point2f> g_person_rel_meters;

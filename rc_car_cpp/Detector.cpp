@@ -204,10 +204,6 @@ bool Detector::detectMultiplePersons(
             bottom_centers.emplace_back(center_x, bottom_y);
             confidences.push_back(conf);
 
-            /*std::cout << "[DEBUG] Person Detected! | Conf: " << conf << " (" << (conf * 100.0f) << "%)"
-                      << " | Box: (" << box.x << ", " << box.y << ", " << box.width << ", " << box.height << ")"
-                      << std::endl;
-            */
         }
 
         return !out_boxes.empty();

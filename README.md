@@ -157,13 +157,13 @@
 rc-car-project/
 ├── rc_car_cpp/              # C++ 로봇 제어 · 좌표 변환 · 객체 탐지 통합 코드
 │   ├── Detector.*           # ONNX Runtime 기반 사람 탐지
-│   ├── CalibrationWorker.*  # 호모그래피 캘리브레이션 (본인 담당)
-│   ├── MapManager.*         # 위성지도 매핑 · 속도 계산 (본인 담당)
-│   ├── GPSWorker.* / PhoneGpsReceiver.*  # GPS 처리 (본인 담당)
-│   ├── MotorController.* / ServoController.* / PwmController.* / GpioOutput.*  # 제어(김우석 담당)
-│   ├── Bno055.* / I2CDevice.* / UartDevice.*  # 센서·하드웨어 통신(김우석 담당)
+│   ├── CalibrationWorker.*  # 호모그래피 캘리브레이션 
+│   ├── MapManager.*         # 위성지도 매핑 · 속도 계산 
+│   ├── GPSWorker.* / PhoneGpsReceiver.*  # GPS 처리 
+│   ├── MotorController.* / ServoController.* / PwmController.* / GpioOutput.*  # 제어
+│   ├── Bno055.* / I2CDevice.* / UartDevice.*  # 센서·하드웨어 통신
 │   └── onnxruntime/         # Raspberry Pi(aarch64)용 ONNX Runtime 라이브러리
-└── ai-model/                # AI 모델 개발 전체 이력 (박지원 담당)
+└── ai-model/                # AI 모델 개발 전체 이력 
 ```
 
 ## 개발/실행 환경

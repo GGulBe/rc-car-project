@@ -17,8 +17,10 @@ std::runtime_error systemError(const std::string& message) {
 
 std::string makePipeline(int width, int height, int fps) {
     std::ostringstream pipeline;
-    pipeline << "libcamerasrc ! video/x-raw,width=" << width << ",height=" << height << ",format=NV12,framerate=" << fps
-        << "/1 ! videoconvert ! video/x-raw,format=BGR ! queue max-size-buffers=1 leaky=downstream ! appsink drop=true max-buffers=1 sync=false" << std::endl;
+    // std::endl 제거 완료 (문자열 끝에 줄바꿈이 들어가면 GStreamer 파이프라인이 오작동합니다)
+    pipeline << "libcamerasrc ! video/x-raw,width=" << width << ",height=" << height 
+             << ",format=NV12,framerate=" << fps << "/1 ! videoconvert ! video/x-raw,format=BGR "
+             << "! queue max-size-buffers=1 leaky=downstream ! appsink drop=true max-buffers=1 sync=false";
     return pipeline.str();
 }
 
@@ -32,9 +34,9 @@ std::string makePhotoFilename() {
     return name.str();
 }
 
-cv::Mat makeDisplay(const cv::Mat& frame, double measuredFps, const Bno055::Tilt& tilt, const UartDevice::gpsdata& gpsdata, double speedSetting, double driveCommand, double steeringAngle)
+cv::Mat makeDisplay(const cv::Mat& frame, double measuredFps, const Bno055::Tilt& tilt, const UartDevice::gpsdata& gpsdata, double speedSetting, double driveCommand, double steeringAngle, double currentSpeed)
 {
-    const int INFO_HEIGHT = 140;
+    const int INFO_HEIGHT = 160;
 
     cv::Mat display(frame.rows + INFO_HEIGHT, frame.cols, frame.type(), cv::Scalar(255, 255, 255));
 
@@ -63,6 +65,10 @@ cv::Mat makeDisplay(const cv::Mat& frame, double measuredFps, const Bno055::Tilt
     std::ostringstream servoLine;
     servoLine << std::fixed << std::setprecision(1) << "Steering : " << steeringAngle;
     cv::putText(display, servoLine.str(), cv::Point(10, 120), cv::FONT_HERSHEY_SIMPLEX, 0.35, cv::Scalar(0, 0, 0), 1);
+
+    std::ostringstream speedLine;
+    speedLine << std::fixed << std::setprecision(2)<< "Current Speed : " << currentSpeed << " m/s";
+    cv::putText(display,speedLine.str(), cv::Point(10, 140), cv::FONT_HERSHEY_SIMPLEX, 0.35, cv::Scalar(0, 0, 0), 1);
 
     return display;
 }

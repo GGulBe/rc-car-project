@@ -8,4 +8,4 @@
 std::runtime_error systemError(const std::string& message);
 std::string makePipeline(int width, int height, int fps);
 std::string makePhotoFilename();
-cv::Mat makeDisplay(const cv::Mat& frame, double measuredFps, const Bno055::Tilt& tilt, const UartDevice::gpsdata& gpsdata, double speedSetting, double driveCommand, double steeringAngle);
+cv::Mat makeDisplay(const cv::Mat& frame, double measuredFps, const Bno055::Tilt& tilt, const UartDevice::gpsdata& gpsdata, double speedSetting, double driveCommand, double steeringAngle, double currentSpeed);

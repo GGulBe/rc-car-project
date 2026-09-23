@@ -7,18 +7,14 @@
 #include <mutex>
 #include "MapManager.h"
 
+// main.cpp와 공유하는 전역 변수
 extern std::mutex g_ai_mtx;
 extern cv::Mat g_latest_frame;
 extern bool g_person_detected;
-extern cv::Point2f g_person_map_pos;
+extern std::vector<cv::Point2f> g_person_rel_meters; // 상대 미터 거리(m)로 변경
+extern std::vector<cv::Rect> g_person_boxes;
 extern std::atomic<bool> g_ai_running;
 
-struct ClickContext {
-    std::vector<cv::Point2f> points;
-    std::string window_name;
-    cv::Mat image;
-};
-
-void mouseCallback(int event, int x, int y, int flags, void* userdata);
+// 함수 선언
 std::vector<cv::Point2f> getCalibrationPoints(cv::Mat& img, const std::string& win_name);
 void aiAndTransformThread(const std::string& model_path, MapManager& mapManager);

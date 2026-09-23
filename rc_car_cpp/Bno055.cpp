@@ -25,7 +25,7 @@ void Bno055::initialize() { // 시작할 때 한번 진행하는 코드 데이�
     i2c_.writeRegister8(REG_UNIT_SEL, 0x00); // 출력 단위를 m/s², °/s, degree, °C 등 기본 단위로 설정
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-    i2c_.writeRegister8(REG_OPR_MODE, MODE_IMU); // MODE_IMU = 0x08 -> IMU모드 실행
+    i2c_.writeRegister8(REG_OPR_MODE, MODE_IMU); // MODE_IMU = 0x0C -> NDOF모드 실행
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
 }
 

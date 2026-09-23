@@ -103,14 +103,14 @@ cv::Mat MapManager::drawMarkers(const GeoPoint& car_gps, double car_heading_deg,
 
     current_display_map_ = map_image_.clone();
 
-    // 1. 궤적 점 추가 및 최대 개수 관리 (150개 제한)
+    // 1. 궤적 점 추가 및 최대 개수 관리 (200개 제한)
     if (trajectory_.empty() || 
         std::abs(trajectory_.back().lat - car_gps.lat) > 0.000008 || 
         std::abs(trajectory_.back().lon - car_gps.lon) > 0.000008) {
         
         trajectory_.push_back(car_gps);
         
-        if (trajectory_.size() > 150) {
+        if (trajectory_.size() > 200) {
             trajectory_.erase(trajectory_.begin());
         }
     }
@@ -135,7 +135,7 @@ cv::Mat MapManager::drawMarkers(const GeoPoint& car_gps, double car_heading_deg,
     // 4. 감지된 사람 위치 렌더링 (음수 거리 및 비정상 범위 필터링 적용)
     if (person_detected) {
         for (size_t i = 0; i < rel_meters_list.size(); ++i) {
-            // 전방 거리가 0m 이하이거나 15m 이상인 비정상 투영값은 지도에 렌더링하지 않음
+            // 전방 거리가 0m 이하이거나 15m 이상인 비정상 투영값은 지도에 렌더링 X
             if (rel_meters_list[i].x <= 0.1f || rel_meters_list[i].x > 15.0f) {
                 continue;
             }

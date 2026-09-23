@@ -89,8 +89,9 @@
 | **김우석** | [@WooSICK](https://github.com/WooSICK) | 제어 알고리즘 — 모터/서보/PWM 구동, GPIO·UART 하드웨어 제어, IMU 연동 |
 | **박지원** | [@parkjiwon3225-ship-it](https://github.com/parkjiwon3225-ship-it) | 객체 탐지 딥러닝 — 사람 탐지 모델 학습·경량화·ONNX 배포 ([`ai-model/`](ai-model/) 참고) |
 
-## 담당: 호모그래피 기반 좌표 변환 알고리즘
+## 호모그래피 기반 좌표 변환 알고리즘
 
+**정민혁**([@GGulBe](https://github.com/GGulBe)) 담당
 카메라 픽셀 좌표를 실제 바닥의 미터 좌표로 변환하는 호모그래피 캘리브레이션을 설계·구현했습니다. 이 값을 이용해 카메라에 탐지된 사람과 RC카의 위치·방향을 위성지도 위에 매핑하고, RC카의 속도 계산과 지도 마킹까지 담당했습니다.
 
 ### 구현 방식

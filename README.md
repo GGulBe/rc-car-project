@@ -46,6 +46,7 @@
 - C++/OpenCV/ONNX Runtime 연동 규격: [`INTEGRATION_CONTRACT.md`](ai-model/05_final-release/2026-08-20_tail004/INTEGRATION_CONTRACT.md)
 - AI 전체 개발 이력: [`ai-model/README.md`](ai-model/README.md)
 
+최종 모델은 R46 / 448×336 / seed 15 checkpoint를 선택적 QDQ INT8로 경량화한 TAIL004입니다. 학습 정확도만으로 결정하지 않고 사람 Recall, 작은 사람 Recall, Raspberry Pi 계산량, FP32 출력 보존성, 실제 카메라 검증을 함께 고려했습니다.
 | 영역 | 내용 |
 |---|---|
 | [`01_model-development`](ai-model/01_model-development/) | group-aware 데이터 분할, custom anchor-free detector, 학습 기반 코드 |
